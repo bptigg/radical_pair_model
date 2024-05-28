@@ -182,15 +182,67 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> _jz(double j)
 	return mat;
 }
 
-Eigen::Tensor<double, Eigen::RowMajor> identity(std::vector<int> dims)
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> spin_jx(double j)
 {
-	//Eigen::Tensor<double, dims.size()> IdentityTensor(dims);
-	return Eigen::Tensor<double, Eigen::RowMajor>();
+	char x = 'x';
+	return jmat(j, &x);
 }
 
-Eigen::SparseMatrix<double, Eigen::RowMajor> identity(int dims)
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> spin_jy(double j)
 {
-	return Eigen::SparseMatrix<double, Eigen::RowMajor>();
+	char x = 'y';
+	return jmat(j, &x);
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> spin_jz(double j)
+{
+	char x = 'z';
+	return jmat(j, &x);
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(std::vector<int> dims)
+{
+	//Eigen::Tensor<double, dims.size()> IdentityTensor(dims);
+
+	std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> IdentityMatrix = {};
+	for (auto i : dims) 
+	{
+		IdentityMatrix.push_back(identity(i));
+	}
+
+	auto multiply = [&](int a, int b) {return a * b; };
+
+	int dimension = std::reduce(dims.begin(), dims.end(), 1, multiply);
+	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> Identiy(dimension, dimension);
+
+	std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> StepUp;
+
+	for (int i = 0; i < dims.size(); i++)
+	{
+		dimension = std::reduce(dims.begin(), dims.end()-dims.size() + i+1, 1, multiply);
+		StepUp.push_back(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dimension, dimension));
+	}
+
+	StepUp[0] = IdentityMatrix[0];
+
+	for (int i = 0; i < dims.size()-1 ; i++) 
+	{
+		StepUp[i+1] = Eigen::KroneckerProductSparse(StepUp[i], IdentityMatrix[i + 1]);
+	}
+	Identiy = StepUp[StepUp.size()-1];
+
+	return Identiy;
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
+{
+	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(dims, dims);
+	for (int i = 0; i < dims; i++)
+	{
+		identity.coeffRef(i, i) = (std::complex<double>)1.0;
+	}
+	//std::cout << Eigen::MatrixXcd(identity) << std::endl;
+	return identity;
 }
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> get_hermition(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>& matrix)

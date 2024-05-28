@@ -21,6 +21,10 @@ int main() {
 	x = 'z';
 	spin_x = jmat(2.5, &x);
 	std::cout << Eigen::MatrixXcd(spin_x) << std::endl;
+
+	auto i  = identity({ 2, 2, 3, 3 });
+
+	std::cout << Eigen::MatrixXcd(i) << std::endl;
 }
 
 
