@@ -27,7 +27,7 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> jmat(double j, char* 
 	}
 	else if (args[0] == 'y') {
 		auto TempMatrix = _jplus(j);
-		matrix = -0.5 * j * (TempMatrix - get_hermition(TempMatrix));
+		matrix = -0.5 * std::complex<double>(0, 1) *(TempMatrix - get_hermition(TempMatrix));
 	}
 	else if (args[0] == 'z') {
 		matrix = _jz(j);
@@ -210,28 +210,29 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(std::vector<
 		IdentityMatrix.push_back(identity(i));
 	}
 
-	auto multiply = [&](int a, int b) {return a * b; };
+	//auto multiply = [&](int a, int b) {return a * b; };
+	//
+	//int dimension = std::reduce(dims.begin(), dims.end(), 1, multiply);
+	//Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> Identity(dimension, dimension);
+	//
+	//std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> StepUp;
+	//
+	//for (int i = 0; i < dims.size(); i++)
+	//{
+	//	dimension = std::reduce(dims.begin(), dims.end()-dims.size() + i+1, 1, multiply);
+	//	StepUp.push_back(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dimension, dimension));
+	//}
+	//
+	//StepUp[0] = IdentityMatrix[0];
+	//
+	//for (int i = 0; i < dims.size()-1 ; i++) 
+	//{
+	//	StepUp[i+1] = Eigen::KroneckerProductSparse(StepUp[i], IdentityMatrix[i + 1]);
+	//}
+	//Identity = StepUp[StepUp.size()-1];
 
-	int dimension = std::reduce(dims.begin(), dims.end(), 1, multiply);
-	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> Identiy(dimension, dimension);
-
-	std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> StepUp;
-
-	for (int i = 0; i < dims.size(); i++)
-	{
-		dimension = std::reduce(dims.begin(), dims.end()-dims.size() + i+1, 1, multiply);
-		StepUp.push_back(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dimension, dimension));
-	}
-
-	StepUp[0] = IdentityMatrix[0];
-
-	for (int i = 0; i < dims.size()-1 ; i++) 
-	{
-		StepUp[i+1] = Eigen::KroneckerProductSparse(StepUp[i], IdentityMatrix[i + 1]);
-	}
-	Identiy = StepUp[StepUp.size()-1];
-
-	return Identiy;
+	//return Identity       
+	return MakeTensor(IdentityMatrix, dims);                                                                                          
 }
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
@@ -241,7 +242,6 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
 	{
 		identity.coeffRef(i, i) = (std::complex<double>)1.0;
 	}
-	//std::cout << Eigen::MatrixXcd(identity) << std::endl;
 	return identity;
 }
 
@@ -250,4 +250,97 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> get_hermition(Eigen::
 	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> ConjugateTransposeMatrix = matrix.transpose().conjugate();
 	return ConjugateTransposeMatrix;
 }
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> OperatorFunctionMapping(char args, int dims)
+{
+	MATRIX SpinOp(dims, dims);
+	double j = ((double)dims - 1) / 2.0;
+	switch (args)
+	{
+	case 'x':
+		SpinOp = spin_jx(j);
+		break;
+	case 'y':
+		SpinOp = spin_jy(j);
+		break;
+	case 'z':
+		SpinOp = spin_jz(j);
+		break;
+	case '+':
+		break;
+	case '-':
+		break;
+	default:
+		break;
+	}
+	return SpinOp;
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> MakeSpinOperator(std::vector<int32_t> dims, std::vector<specs> spec)
+{
+	int num = spec.size();
+	std::vector<MATRIX> ops = {};
+	for (int i = 0; i < dims.size(); i++) 
+	{
+		ops.push_back(identity(dims[i]));
+	}
+	for (int i = 0; i < num; i++)
+	{
+		auto [ind, opstr] = spec[i];
+		ops[ind] = ops[ind] * OperatorFunctionMapping(opstr, dims[ind]);
+	}
+
+	return MakeTensor(ops, dims);
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> MakeZeroOperator(std::vector<int32_t> dims)
+{
+	int num = dims.size();
+	int dimension = 1;
+	for (int i = 0; i < num; i++)
+	{
+		dimension = dimension * dims[i];
+	}
+
+	return Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dimension, dimension);
+}
+
+Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> MakeTensor(std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>>& MatrixVec, std::vector<int32_t> dims)
+{
+	auto multiply = [&](int a, int b) {return a * b; };
+	
+	int dimension = 0;
+	if (dims.size() == MatrixVec.size())
+	{
+		dimension = std::reduce(dims.begin(), dims.end(), 1, multiply);
+	}
+	else
+	{
+		dims.clear();
+		for (int i = 0; i < MatrixVec.size(); i++)
+		{
+			dims.push_back(MatrixVec[i].outerSize());
+		}
+		dimension = std::reduce(dims.begin(), dims.end(), 1, multiply);
+	}
+	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> ReturnMatrix(dimension, dimension);
+
+	std::vector<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> StepUp;
+
+	StepUp.push_back(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dims[0], dims[0]));
+	StepUp[0] = MatrixVec[0];
+
+	for (int i = 0; i < MatrixVec.size() - 1; i++)
+	{
+		dimension = std::reduce(dims.begin(), dims.end() - dims.size() + i + 2, 1, multiply);
+		StepUp.push_back(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>(dimension, dimension));
+		StepUp[1] = Eigen::KroneckerProductSparse(StepUp[0], MatrixVec[i + 1]);
+		StepUp.erase(StepUp.begin(), StepUp.begin() + 1);
+	}
+	ReturnMatrix = StepUp[0];
+
+	return ReturnMatrix;
+}
+
+
 

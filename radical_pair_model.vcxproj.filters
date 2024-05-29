@@ -21,7 +21,10 @@
     <ClCompile Include="src\radical_pair_model.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Tensor.cpp">
+    <ClCompile Include="src\QuantumObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Methods.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -29,7 +32,13 @@
     <ClInclude Include="src\spin_operator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\Tensor.h">
+    <ClInclude Include="src\QuantumObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Methods.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\constants.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
