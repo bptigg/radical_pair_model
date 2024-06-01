@@ -6,7 +6,7 @@
 #include <iostream>
 #include <numeric>
 
-#define MATRIX Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>
+typedef Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> Matrix;
 
 struct specs
 {

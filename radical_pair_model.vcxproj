@@ -105,7 +105,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)dependencies\gsl_1.16_vs2015\include;$(ProjectDir)src\vendor\eigen-master;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\vendor\boost_1_85_0;$(ProjectDir)dependencies\gsl_1.16_vs2015\include;$(ProjectDir)src\vendor\eigen-master;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -122,6 +122,8 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\vendor\boost_1_85_0;$(ProjectDir)dependencies\gsl_1.16_vs2015\include;$(ProjectDir)src\vendor\eigen-master;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,12 +138,14 @@
     <ClCompile Include="src\QuantumObject.cpp" />
     <ClCompile Include="src\radical_pair_model.cpp" />
     <ClCompile Include="src\spin_operator.cpp" />
+    <ClCompile Include="src\ThreadPool.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\constants.h" />
     <ClInclude Include="src\Methods.h" />
     <ClInclude Include="src\QuantumObject.h" />
     <ClInclude Include="src\spin_operator.h" />
+    <ClInclude Include="src\ThreadPool.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

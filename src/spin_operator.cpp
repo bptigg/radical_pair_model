@@ -253,7 +253,7 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> get_hermition(Eigen::
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> OperatorFunctionMapping(char args, int dims)
 {
-	MATRIX SpinOp(dims, dims);
+	Matrix SpinOp(dims, dims);
 	double j = ((double)dims - 1) / 2.0;
 	switch (args)
 	{
@@ -279,7 +279,7 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> OperatorFunctionMappi
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> MakeSpinOperator(std::vector<int32_t> dims, std::vector<specs> spec)
 {
 	int num = spec.size();
-	std::vector<MATRIX> ops = {};
+	std::vector<Matrix> ops = {};
 	for (int i = 0; i < dims.size(); i++) 
 	{
 		ops.push_back(identity(dims[i]));

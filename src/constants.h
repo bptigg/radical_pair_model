@@ -7,7 +7,8 @@
 
 
 #define G_FACTOR_ELECTRON 2.0023193043617
-
+#define B0 1.4*2*M_PI
+#define KF 1
 
 #pragma region Hyperfine_mat
 
