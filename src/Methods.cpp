@@ -183,7 +183,8 @@ Eigen::VectorXcd DotProduct(Matrix& mat, const Eigen::VectorXcd& vec)
 
 
 
-std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec)
+//std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec)
+std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec)
 {
 	unsigned int size = vec.size();
 
@@ -198,7 +199,7 @@ std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std
 			auto temp2 = mat.row(i);
 			for (int i = 0; i < size; i++)
 			{
-				temp.push_back(temp2[i]);
+				temp.push_back(temp2.coeff(i));
 			}
 			work.push_back({ i,temp });
 		}
@@ -209,7 +210,16 @@ std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std
 			std::complex<double> sum = 0;
 			for (int e = 0; e < work[i].second.size(); e++)
 			{
-				sum = sum + work[i].second[e] * vec[e];
+				auto val1 = work[i].second[e], val2 = vec[e];
+				const uint32_t bits = *(reinterpret_cast<uint32_t*>(&val1));
+				if ((bits + bits) == 0)
+				{
+					sum = sum + std::complex<double>(0.0,0.0);
+				}
+				else
+				{
+					sum = sum + work[i].second[e] * val2;
+				}
 			}
 			work_lock.lock();
 			DotReturnVec.push_back({ i, sum });

@@ -20,7 +20,8 @@ std::vector<std::complex<double>> FlattenMatrixVec(Matrix mat);
 Matrix ReformMatrix(std::vector<std::complex<double>> vec);
 
 Eigen::VectorXcd DotProduct(Matrix& mat, const Eigen::VectorXcd& vec);
-std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec);
+//std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec);
+std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec);
 
 void StartThreadPool(int max_threads);
 void KillThreadPool();
