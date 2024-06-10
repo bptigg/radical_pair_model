@@ -9,12 +9,16 @@
 #define G_FACTOR_ELECTRON 2.0023193043617
 #define B0 1.4*2*M_PI
 
-//#define KF 1
 #define KF 0
+
+#define KF_C 0
+#define KF_D 0
+
 #define KR_S1 0
-//#define KR_S1 0.1
-#define KCD 10000
-#define KDC 10000
+#define KR_S2 0
+
+#define KCD 1
+#define KDC 1
 
 #pragma region Hyperfine_mat
 
@@ -32,8 +36,17 @@ static std::array<double, 3> N1r2 = { -0.0586562 * HYPERFINE_PREFACTOR, 0.564443
 static std::array<double, 3> N1r3 = { 0.0460172 * HYPERFINE_PREFACTOR, -0.564764 * HYPERFINE_PREFACTOR, 0.453074 * HYPERFINE_PREFACTOR };
 #pragma endregion
 static std::array<std::array<double, 3>, 3> N1 = { N1r1, N1r2, N1r3 };
+#pragma region test
+//A = np.diag([-2.6, -2.6, 49.2]) * 2*math.pi
+static std::array<double, 3> A_r1 = { -2.6, 0,0 };
+static std::array<double, 3> A_r2 = { 0, -2.6, 0 };
+static std::array<double, 3> A_r3 = { 0, 0,49.2 };
+static std::array<std::array<double, 3>, 3> A = { A_r1, A_r2, A_r3 };
 
+#pragma endregion test
 #pragma endregion Hypefine_mat
+
+//multiply hyperfine by 2pi
 
 #pragma region FAD/WC
 

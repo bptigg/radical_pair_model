@@ -21,7 +21,7 @@ Matrix ReformMatrix(std::vector<std::complex<double>> vec);
 
 Eigen::VectorXcd DotProduct(Matrix& mat, const Eigen::VectorXcd& vec);
 //std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec);
-std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec);
+std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec = {}, bool term = false);
 
 void StartThreadPool(int max_threads);
 void KillThreadPool();
@@ -33,6 +33,8 @@ MATRIX3x3 PointDipoleDipoleCoupling(std::array<double, 3> r);
 Eigen::Vector4d SingletState();
 
 double simpson_integration(std::vector<double> x_list, std::vector<double> y_list = {});
+std::vector<std::array<double,3>> FibonacciSphere(int n);
+
 
 template<typename t, int s1, int s2>
 Eigen::Vector<t, s1* s2> TensorProduct(Eigen::Vector<t, s1> v1, Eigen::Vector<t, s2> v2)
@@ -51,61 +53,6 @@ Eigen::Vector<t, s1* s2> TensorProduct(Eigen::Vector<t, s1> v1, Eigen::Vector<t,
 	return ReturnVec;
 }
 
-template<typename t>
-void Merge(std::vector<std::pair<int, t>>& arr, int left, int mid, int right)
-{
-	int l_size = mid - left + 1;
-	int r_size = right - mid;
 
-	std::vector<std::pair<int, t>> l(l_size);
-	std::vector<std::pair<int, t>> r(r_size);
-
-	for (int i = 0; i < l_size; i++)
-	{
-		l[i] = arr[left + i];
-	}
-	for (int i = 0; i < r_size; i++)
-	{
-		r[i] = arr[mid + 1 + i];
-	}
-
-	int LeftIndex = 0, RightIndex = 0;
-	int CurrentIndex = left;
-
-	while ((LeftIndex < l_size) && (RightIndex < r_size))
-	{
-		if (l[LeftIndex].first <= r[RightIndex].first)
-		{
-			arr[CurrentIndex] = l[LeftIndex];
-			LeftIndex++;
-		}
-		else
-		{
-			arr[CurrentIndex] = r[RightIndex];
-			RightIndex++;
-		}
-		CurrentIndex++;
-	}
-
-	while (LeftIndex < l_size) { arr[CurrentIndex++] = l[LeftIndex++]; }
-	while (RightIndex < r_size) { arr[CurrentIndex++] = r[RightIndex++]; }
-	
-}
-
-template<typename t>
-void MergeSort(std::vector<std::pair<int, t>>& arr, int left, int right)
-{
-	if (left >= right)
-	{
-		return;
-	}
-	
-	int mid = (left + right) / 2;
-	MergeSort(arr, left, mid);
-	MergeSort(arr, mid + 1, left);
-	Merge(arr, left, mid, right);
-}
-
-void sort(std::vector<std::pair<int, std::complex<double>>>& arr);
 
 

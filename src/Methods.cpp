@@ -4,7 +4,8 @@
 
 static std::array<char, 3> axis = { 'x', 'y', 'z' };
 static int num_jobs = 0;
-static std::vector<std::pair<int, std::vector<std::complex<double>>>> work;
+//static std::vector<std::pair<int, std::vector<std::complex<double>>>> work;
+static std::vector<std::pair<int, Eigen::SparseVector<std::complex<double>>>> work;
 static std::mutex work_lock;
 static std::vector<std::pair<int, std::complex<double>>> DotReturnVec;
 static ThreadPool* pool = nullptr;
@@ -184,43 +185,62 @@ Eigen::VectorXcd DotProduct(Matrix& mat, const Eigen::VectorXcd& vec)
 
 
 //std::vector<std::complex<double>> DotProductVec(Eigen::MatrixXcd& mat, const std::vector<std::complex<double>>& vec)
-std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec)
+std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<std::complex<double>>& vec, bool term)
 {
 	unsigned int size = vec.size();
 
 	if (pool == nullptr)
 	{	
 		unsigned int nthreads = std::thread::hardware_concurrency();
+		size = mat.rows();
 		StartThreadPool(nthreads);
 		work.clear();
 		for (int i = 0; i < size; i++)
 		{
-			std::vector<std::complex<double>> temp;
-			auto temp2 = mat.row(i);
-			for (int i = 0; i < size; i++)
-			{
-				temp.push_back(temp2.coeff(i));
-			}
-			work.push_back({ i,temp });
+			//std::vector<std::complex<double>> temp;
+			Eigen::SparseVector<std::complex<double>> temp2(size);
+			temp2 = mat.row(i);
+			//for (int i = 0; i < size; i++)
+			//{
+			//	temp.push_back(temp2.coeff(i));
+			//}
+			work.push_back({ i,temp2 });
 		}
+	}
+
+	if (term)
+	{
+		return { {std::complex<double>(0,0)} };
 	}
 
 	auto dot = [&](int i)
 		{
 			std::complex<double> sum = 0;
-			for (int e = 0; e < work[i].second.size(); e++)
+
+			int ind_size = work[i].second.data().size();
+			for (int e = 0; e < ind_size; e++)
 			{
-				auto val1 = work[i].second[e], val2 = vec[e];
-				const uint32_t bits = *(reinterpret_cast<uint32_t*>(&val1));
-				if ((bits + bits) == 0)
-				{
-					sum = sum + std::complex<double>(0.0,0.0);
-				}
-				else
-				{
-					sum = sum + work[i].second[e] * val2;
-				}
+				int index = work[i].second.data().index(e);
+				
+				auto val1 = work[i].second.coeff(index), val2 = vec[index];
+				sum = sum + (val1 * val2);
 			}
+
+			//for (int e = 0; e < work[i].second.size(); e++)
+			//{
+			//	auto val1 = work[i].second.coeff(e), val2 = vec[e];
+			//	const uint32_t bits = *(reinterpret_cast<uint32_t*>(&val1));
+			//	if ((bits + bits) == 0)
+			//	{
+			//		sum = sum + std::complex<double>(0.0,0.0);
+			//	}
+			//	else
+			//	{
+			//		sum = sum + val1 * val2;
+			//	}
+			//
+			//}
+
 			work_lock.lock();
 			DotReturnVec.push_back({ i, sum });
 			work_lock.unlock();
@@ -353,6 +373,27 @@ double simpson_integration(std::vector<double> x_list, std::vector<double> y_lis
 		area = area + (ab * 0.5) * diff;
 	}
 	return area;
+}
+
+std::vector<std::array<double, 3>> FibonacciSphere(int n)
+{
+	std::vector<std::array<double, 3>> points;
+	double phi = M_PI * (3.0 - std::sqrt(5.0)); //golden angle in radians
+
+	for (int i = 0; i < n; i++)
+	{
+		double y = 1.0 - ((double)i / double(n - 1)) * 2;
+		double r = std::sqrt(1.0 - (y * y));
+
+		double theta = phi * (double)i;
+
+		double x = std::cos(theta) * r;
+		double z = std::sin(theta) * r;
+
+		points.push_back({x,y,z});
+	}
+
+	return points;
 }
 
 void sort(std::vector<std::pair<int, std::complex<double>>>& arr)
