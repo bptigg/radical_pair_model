@@ -396,6 +396,8 @@ std::vector<std::array<double, 3>> FibonacciSphere(int n)
 	return points;
 }
 
+
+
 void sort(std::vector<std::pair<int, std::complex<double>>>& arr)
 {
 	auto sortpair = [&](std::pair<int, std::complex<double>> a, std::pair<int, std::complex<double>>b)

@@ -245,6 +245,16 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
 	return identity;
 }
 
+Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* identity_new(int dims)
+{
+	Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* identity = new Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>(dims, dims);
+	for (int i = 0; i < dims; i++)
+	{
+		identity->coeffRef(i, i) = (std::complex<double>)1.0;
+	}
+	return identity;
+}
+
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> get_hermition(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>& matrix)
 {
 	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> ConjugateTransposeMatrix = matrix.transpose().conjugate();

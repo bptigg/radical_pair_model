@@ -41,7 +41,11 @@ public:
 
 	~Structure();
 
-	std::vector<int> get_dims() {
+	std::vector<int> get_dims(bool val = false) {
+		if (val)
+		{
+			return { m_dim };
+		}
 		return m_dims;
 	}
 	int get_num_radicals() {

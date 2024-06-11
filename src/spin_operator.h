@@ -24,6 +24,7 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> spin_jz(double j);
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(std::vector<int> dims);
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims);
+Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* identity_new(int dims);
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> get_hermition(Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>& matrix);
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> OperatorFunctionMapping(char args, int dims);

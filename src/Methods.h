@@ -11,6 +11,8 @@
 
 #define MATRIX3x3 std::array<std::array<double,3>,3>
 
+#define MatrixCol Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>
+
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> commutator(Matrix& A, Matrix& B);
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> MakeHamiltonian(std::vector<int32_t> dims, int ind, std::array<double, 3> parvec);
@@ -34,7 +36,6 @@ Eigen::Vector4d SingletState();
 
 double simpson_integration(std::vector<double> x_list, std::vector<double> y_list = {});
 std::vector<std::array<double,3>> FibonacciSphere(int n);
-
 
 template<typename t, int s1, int s2>
 Eigen::Vector<t, s1* s2> TensorProduct(Eigen::Vector<t, s1> v1, Eigen::Vector<t, s2> v2)

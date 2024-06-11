@@ -27,6 +27,9 @@ using namespace boost::numeric;
 typedef odeint::runge_kutta_dopri5<state_type> stepper_type;
 
 
+#define MODE 1
+
+
 //typedef std::vector<std::tuple<double, std::complex<double>, std::complex<double>>> TrajectoryType;
 typedef std::vector<std::pair<double, std::vector<std::complex<double>>>> TrajectoryType;
 
@@ -34,13 +37,31 @@ class QuantumMasterEquation
 {
 	//Eigen::MatrixXcd m_supor;
 	Matrix m_supor;
+	Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* m_cached_matrix;
+	int m_dims;
 
 public:
 	QuantumMasterEquation(Matrix& SuperOperator)
 		:m_supor(SuperOperator)
 	{
+		m_cached_matrix = nullptr;
+		m_dims = 0;
 	}
 
+	QuantumMasterEquation(Matrix& SuperOperator, int dims)
+		:m_supor(SuperOperator)
+	{
+		m_cached_matrix = nullptr;
+		m_dims = dims;
+	}
+
+	~QuantumMasterEquation()
+	{
+		if (m_cached_matrix != nullptr)
+		{
+			delete m_cached_matrix;
+		}
+	}
 	void operator() (const state_type& rho, state_type& drhodt, const double t)
 	{
 		state_type vec = DotProductVec(m_supor, rho);
@@ -49,6 +70,45 @@ public:
 			vec[i] = vec[i] * std::complex<double>(-1,0);
 		}
 		drhodt = vec;
+	}
+
+	double SparseSolver(const state_type& rho, const Matrix& projection_operator)
+	{
+		Eigen::SparseLU<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> Solver;
+		
+		Solver.compute(m_supor);
+		if (Solver.info() != Eigen::Success)
+		{
+			return 0;
+		}
+
+		Eigen::SparseVector<std::complex<double>> rho_naught(m_dims);
+		
+		for(int i = 0; i < m_dims; i++)
+		{
+			if (rho[i] != std::complex<double>(0))
+			{
+				rho_naught.coeffRef(i) = rho[i];
+			}
+		}
+
+		Eigen::SparseVector<std::complex<double>> observable(m_dims);
+		observable = Solver.solve(rho_naught);
+		if (Solver.info() != Eigen::Success)
+		{
+			return 0;
+		}
+
+		state_type vec_1 = FlattenMatrixVec(projection_operator);
+		
+		std::complex<double> sum(0, 0);
+		for (int i = 0; i < vec_1.size(); i++)
+		{
+			sum = sum + (vec_1[i] * observable.coeff(i));
+		}
+		double yeild = sum.real();
+		std::cout << yeild << std::endl;
+		return yeild;
 	}
 
 };
@@ -181,12 +241,12 @@ int main()
 	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0}, {"N5_Wd", {0,2}, 1}, {"N1_Wc", {1,4}, 1} };
 
 	Structure_param one_radical;
-	//one_radical.spins = { 1, 1 };
-	one_radical.spins = { 1 };
+	one_radical.spins = { 1, 1 };
+	//one_radical.spins = { 1 };
 	one_radical.num_radicals = 1;
 	one_radical.DipoleBinding = { {"EED_Wc", 0} };
-	//one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
-	one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
+	one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
+	//one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
 
 	Structure radical_sys(one_radical);
 	radical_sys.CreateRadicalSystem();
@@ -270,6 +330,8 @@ int main()
 	for (auto ori : oris)
 	{
 		olg->UpdateKill(false);
+		int dim_size = radical_sys.get_dims(true)[0];
+		Matrix Leff_data(dim_size, dim_size);
 
 		{
 			auto b0vec = multiply(ori, B0);
@@ -331,13 +393,19 @@ int main()
 			//
 			//}
 			radical_sys.UpdateZeemanHamiltonian(b0vec);
-			Matrix Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
+			//Matrix Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
+			Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
 			radical_sys.clear();
+#if MODE == 0:
 			DotProductVec(Leff_data, {}, true);
+#endif
 		}
 
-		Matrix m(1, 1);
-		QuantumMasterEquation eq(m);
+		//Matrix m(1, 1);
+		//QuantumMasterEquation eq(m);
+
+		QuantumMasterEquation eq(Leff_data, std::pow(dim_size, 2 * radical_sys.get_num_radicals()));
+		eq.SparseSolver(vec, singlet_projection_operator);
 
 		std::vector<state_type> x_vec = {};
 		std::vector<double> time = {};

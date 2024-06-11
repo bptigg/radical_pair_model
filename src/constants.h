@@ -9,12 +9,12 @@
 #define G_FACTOR_ELECTRON 2.0023193043617
 #define B0 1.4*2*M_PI
 
-#define KF 0
+#define KF 1
 
 #define KF_C 0
 #define KF_D 0
 
-#define KR_S1 0
+#define KR_S1 1
 #define KR_S2 0
 
 #define KCD 1
