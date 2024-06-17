@@ -14,6 +14,13 @@ struct Structure_param
 	std::vector<std::tuple<std::string, std::pair<int, int>, int>> HyperfineBinding;
 };
 
+struct system_setup
+{
+	int num_radicals = 0;
+	std::vector<double> rate_constants = {};
+	std::vector<int> dims = {};
+};
+
 class Structure
 {
 private:

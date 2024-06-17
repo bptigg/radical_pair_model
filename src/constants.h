@@ -11,14 +11,14 @@
 
 #define KF 1
 
-#define KF_C 0
-#define KF_D 0
+#define KF_C 1
+#define KF_D 1
 
 #define KR_S1 1
-#define KR_S2 0
+#define KR_S2 1
 
-#define KCD 1
-#define KDC 1
+#define KCD 1 //std::pow(10,4)
+#define KDC 1 //std::pow(10,4)
 
 #pragma region Hyperfine_mat
 

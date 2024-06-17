@@ -89,6 +89,7 @@ Matrix Structure::DoubleRadicalPair(Matrix& singlet_projection_operator)
                 }
             }
         }
+        Leff_data.setFromTriplets(entries.begin(), entries.end());
     }
     return Leff_data;
 }

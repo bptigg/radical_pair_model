@@ -6,6 +6,8 @@
 #include <ctime>
 #include <chrono>
 #include <string>
+#include <filesystem>
+
 
 //#include "spin_operator.h"
 #include "Methods.h"
@@ -18,6 +20,8 @@
 #include <boost\numeric\odeint\external\eigen\eigen.hpp>
 #include <boost\numeric\odeint\external\openmp\openmp.hpp>
 #include <Eigen/Eigenvalues>
+
+//#include <Eigen\SuperLUSupport>
 
 #pragma warning( disable : 4996)
 
@@ -72,43 +76,117 @@ public:
 		drhodt = vec;
 	}
 
-	double SparseSolver(const state_type& rho, const Matrix& projection_operator)
+	double SparseSolver(const state_type& rho, const Matrix& projection_operator, system_setup& setup)
 	{
 		Eigen::SparseLU<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> Solver;
-		
+
+		int n = 16;
+		omp_set_num_threads(n);
+		Eigen::setNbThreads(n);
+
+		//Eigen::BiCGSTAB<Matrix> Solver2;
+		//
+		//int leff_size = m_dims * 0.5;
+		//Matrix m_supor_preconditioner(m_dims, m_dims);
+		//Matrix top_left = m_supor.topLeftCorner(leff_size, leff_size);
+		//Matrix bottom_right = m_supor.bottomRightCorner(leff_size, leff_size);
+		//
+		//std::vector<Matrix*> mat_corner = { &top_left, &bottom_right };
+		//
+		//typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+		//std::vector<T> entries;
+		//
+		//for (int i = 0; i < 2; i++)
+		//{
+		//	for (int j = 0; j < leff_size; j++)
+		//	{
+		//		//int ind_size = mat_corner[i]->row(j).coeffs().size();
+		//		//std::cout << ind_size << std::endl;
+		//		for (int k = 0; k < leff_size; k++)
+		//		{
+		//			std::complex<double> value = mat_corner[i]->coeff(j, k);
+		//			if (value == std::complex<double>(0.0, 0.0))
+		//			{
+		//				continue;
+		//			}
+		//			std::pair<int, int> pos = { (i * leff_size) + j, (i * leff_size) + k };
+		//			entries.push_back(T(pos.first, pos.second, value));
+		//		}
+		//	}
+		//}
+		//m_supor_preconditioner.setFromTriplets(entries.begin(), entries.end());
+
+		//Solver.compute(m_supor_preconditioner);
 		Solver.compute(m_supor);
 		if (Solver.info() != Eigen::Success)
 		{
 			return 0;
 		}
 
+		//Eigen::VectorXcd rho_naught_2(m_dims);
 		Eigen::SparseVector<std::complex<double>> rho_naught(m_dims);
 		
-		for(int i = 0; i < m_dims; i++)
+		for (int i = 0; i < m_dims; i++)
 		{
-			if (rho[i] != std::complex<double>(0))
+			if (i >= rho.size())
+			{
+				//rho_naught.coeffRef(i) = std::complex<double>(0, 0);
+				break;
+			}
+			else if (rho[i] != std::complex<double>(0, 0))
 			{
 				rho_naught.coeffRef(i) = rho[i];
 			}
+
+			//guess[i] = rho_naught[i] / m_supor.coeff(i, i);
 		}
+
+		//Eigen::VectorXcd guess(m_dims);
+		//guess = Solver.solve(rho_naught);
+		//
+		//Solver2.compute(m_supor);
+		//rho_naught_2 = Eigen::VectorXcd(rho_naught);
+		//Eigen::VectorXcd observable(m_dims);
+		//Solver2.setTolerance(1e-16);
+		//double error = 1;
+		//observable = Solver2.solveWithGuess(rho_naught_2, guess);
 
 		Eigen::SparseVector<std::complex<double>> observable(m_dims);
 		observable = Solver.solve(rho_naught);
-		if (Solver.info() != Eigen::Success)
+		std::vector<double> yeilds = {};
+		for (int i = 0; i < setup.num_radicals; i++)
 		{
-			return 0;
+			state_type vec = {};
+			for (int e = 0; e < setup.num_radicals; e++)
+			{
+				if (e != i)
+				{
+					state_type vec_temp = FlattenMatrixVec(MakeZeroOperator(setup.dims));
+					vec.insert(vec.end(), vec_temp.begin(), vec_temp.end());
+				}
+				else
+				{
+					state_type projection_vec = FlattenMatrixVec(projection_operator);
+					vec.insert(vec.end(), projection_vec.begin(), projection_vec.end());
+				}
+			}
+
+			std::complex<double> sum(0, 0);
+			for (int a = 0; a < vec.size(); a++)
+			{
+				sum = sum + (setup.rate_constants[i] * vec[a] * observable.coeff(a));
+			}
+			double yeild = sum.real();
+			yeilds.push_back(yeild);
 		}
 
-		state_type vec_1 = FlattenMatrixVec(projection_operator);
-		
-		std::complex<double> sum(0, 0);
-		for (int i = 0; i < vec_1.size(); i++)
+		double total_yeild = 0.0;
+
+		for (int i = 0; i < yeilds.size(); i++)
 		{
-			sum = sum + (vec_1[i] * observable.coeff(i));
+			total_yeild = total_yeild + yeilds[i];
 		}
-		double yeild = sum.real();
-		std::cout << yeild << std::endl;
-		return yeild;
+		return total_yeild;
 	}
 
 };
@@ -235,7 +313,7 @@ int main()
 	std::string time_string = buf;
 
 	Structure_param two_radical;
-	two_radical.spins = {1, 1};
+	two_radical.spins = {0.5, 0.5, 0.5};
 	two_radical.num_radicals = 2;
 	two_radical.DipoleBinding = { {"EED_Wc", 0}, {"EED_Wd", 1} };
 	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0}, {"N5_Wd", {0,2}, 1}, {"N1_Wc", {1,4}, 1} };
@@ -248,20 +326,9 @@ int main()
 	one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
 	//one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
 
-	Structure radical_sys(one_radical);
+	Structure radical_sys(two_radical);
 	radical_sys.CreateRadicalSystem();
 
-	//auto DDSE = PointDipoleDipoleCoupling({ 8.51061, -14.251621, 6.5492562 });
-	
-	//auto DDSE_c = DDSE_Wc;
-	//auto DDSE_d = DDSE_Wd;
-	//
-	//std::vector<int32_t>dims = { 2,2,3,3,3};
-	////std::vector<int32_t>dims = { 2,2,2,2,2 };
-	//
-	//auto product = [](int a, int b) {return a * b; };
-	//uint32_t dim = std::reduce(dims.begin(), dims.end(), 1, product);
-	//
 	MATRIX3x3 ide;
 	
 	for (int i = 0; i < 3; i++)
@@ -283,28 +350,6 @@ int main()
 	Matrix identity_mat = MakeSpinOperator(dims, {});
 	Matrix triplet_projection_operator = identity_mat - singlet_projection_operator;
 
-	//Matrix H_0_C(dim, dim);
-	//{
-	//	Matrix DipoleDipoleElectronHamiltonian = MakeHamiltonian(dims, 0, 1, DDSE_c);
-	//
-	//	Matrix H1 = MakeHamiltonian(dims, 0, 2, N5_Wc);
-	//	Matrix H2 = MakeHamiltonian(dims, 1, 3, N1_Wc);
-	//	Matrix HyperfineHamiltonian = H1 + H2;
-	//
-	//	H_0_C = HyperfineHamiltonian + DipoleDipoleElectronHamiltonian;
-	//}
-	//
-	//Matrix H_0_D(dim, dim);
-	//{
-	//	Matrix DipoleDipoleElectronHamiltonian = MakeHamiltonian(dims, 0, 1, DDSE_d);
-	//
-	//	Matrix H1 = MakeHamiltonian(dims, 0, 2, N5_Wd);
-	//	Matrix H2 = MakeHamiltonian(dims, 1, 4, N1_Wd);
-	//	Matrix HyperfineHamiltonian = H1 + H2;
-	//
-	//	H_0_D = HyperfineHamiltonian + DipoleDipoleElectronHamiltonian;
-	//}
-
 	state_type vec = {};
 	
 	{
@@ -318,80 +363,54 @@ int main()
 		//vec.insert(vec.end(), std::make_move_iterator(vec_d.begin()), std::make_move_iterator(vec_d.end()));
 	}
 
-	std::array<std::array<double, 3>, 1> oris = { {1.0,0.0,0.0} };
+	std::vector<std::array<double, 3>> oris = {};
+	std::vector<double> phi;
+	double theta = M_PI_2;
+	std::vector<std::array<double, 3>> yeilds;
+	for (int i = 0; i < 180; i++)
+	{
+		phi.push_back(((M_PI_2 / 90) * i));
+	}
+	for (auto p : phi)
+	{
+		double x = std::sin(p) * std::cos(theta);
+		double y = std::sin(p) * std::sin(theta);
+		double z = std::cos(p);
+		oris.push_back({ x,y,z });
+		yeilds.push_back({ p,theta,0 });
+	}
 	//std::vector<std::array<double, 3>> oris = FibonacciSphere(250);
 	auto multiply = [](std::array<double, 3> arr, double val) {for (int i = 0; i < 3; i++) { arr[i] = arr[i] * val; return arr; }};
 
 	//double t_max = 1 / KF;
 	double t_max = 1;
 
-	output_lock_guard* olg = new output_lock_guard;
-
-	for (auto ori : oris)
 	{
+		std::filesystem::path filepath = std::string("Results/test.txt");
+		bool exists = std::filesystem::is_directory(filepath.parent_path());
+		if (!exists)
+		{
+			std::filesystem::create_directory("Results");
+		}
+
+		filepath = std::string("Results/yeild/test.txt");
+		exists = std::filesystem::is_directory(filepath.parent_path());
+		if (!exists)
+		{
+			std::filesystem::create_directory("Results/yeild");
+		}
+	}
+
+	output_lock_guard* olg = new output_lock_guard;
+	int i = 0;
+	for (auto ori : oris)
+	{;
 		olg->UpdateKill(false);
 		int dim_size = radical_sys.get_dims(true)[0];
 		Matrix Leff_data(dim_size, dim_size);
 
 		{
 			auto b0vec = multiply(ori, B0);
-			//Matrix ZeemanHamiltionan = MakeHamiltonian(dims, 0, b0vec) + MakeHamiltonian(dims, 1, b0vec);
-			//
-			//Matrix Heff_c = H_0_C + ZeemanHamiltionan;
-			//Matrix Heff_d = H_0_D + ZeemanHamiltionan;
-			//
-			//int dim2 = std::pow(dim, 2);
-			//Matrix Leff_c(dim2, dim2);
-			//{
-			//	std::vector<Matrix> vec1_c = { Heff_c, identity_mat };
-			//	std::vector<Matrix> vec2_c = { identity_mat, Heff_c.transpose() };
-			//	std::vector<Matrix> vec3_c = { singlet_projection_operator, identity_mat };
-			//	std::vector<Matrix> vec4_c = { identity_mat, singlet_projection_operator };
-			//	Leff_c = (std::complex<double>(0, 1) * (MakeTensor(vec1_c, dims) - MakeTensor(vec2_c, dims))) + (0.5 * KR_S1 * (MakeTensor(vec3_c, dims) + MakeTensor(vec4_c, dims)));
-			//}
-			////auto Leff_data = Eigen::MatrixXcd(Leff_c);
-			//Matrix Leff_d(dim2, dim2);
-			//Matrix identity_supor = identity(std::pow(dim, 2));
-			//{
-			//	std::vector<Matrix> vec1_d = { Heff_d, identity_mat };
-			//	std::vector<Matrix> vec2_d = { identity_mat, Heff_d.transpose() };
-			//	Leff_d = (std::complex<double>(0, 1) * (MakeTensor(vec1_d, dims) - MakeTensor(vec2_d, dims))) + (KF * identity_supor);
-			//}
-			//
-			//int dim_size = 2 * std::pow(dim, 2);
-			//Matrix Leff_data(dim_size, dim_size);
-			//{
-			//	Matrix q1 = Leff_c + KCD * identity_supor;
-			//	Matrix q2 = -1 * KDC * identity_supor;
-			//	Matrix q3 = -1 * KCD * identity_supor;
-			//	Matrix q4 = Leff_d + KDC * identity_supor;
-			//
-			//	std::vector<Matrix*> mat_corner = { &q1, &q2, &q3, &q4 };
-			//	int Leff_size = dim_size * 0.5;
-			//
-			//	typedef Eigen::Triplet<std::complex<double>, int32_t> T;
-			//	std::vector<T> entries;
-			//
-			//	for (int i = 0; i < 4; i++)
-			//	{
-			//		for (int j = 0; j < Leff_size; j++)
-			//		{
-			//			for (int k = 0; k < Leff_size; k++)
-			//			{
-			//				std::complex<double> value = mat_corner[i]->coeff(j, k);
-			//				if (value == std::complex<double>(0.0, 0.0))
-			//				{
-			//					continue;
-			//				}
-			//				std::pair<int, int> pos = { (std::floor((double)i / 2.0) * Leff_size) + j, ((i) % 2 * Leff_size) + k };
-			//				entries.push_back(T(pos.first, pos.second, value));
-			//			}
-			//		}
-			//	}
-			//
-			//	Leff_data.setFromTriplets(entries.begin(), entries.end());
-			//
-			//}
 			radical_sys.UpdateZeemanHamiltonian(b0vec);
 			//Matrix Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
 			Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
@@ -403,10 +422,12 @@ int main()
 
 		//Matrix m(1, 1);
 		//QuantumMasterEquation eq(m);
+		system_setup setup = { radical_sys.get_num_radicals(), {KF_C, KF_D}, radical_sys.get_dims()};
+		QuantumMasterEquation eq(Leff_data, Leff_data.rows());
+		double y = eq.SparseSolver(vec, singlet_projection_operator, setup);
+		yeilds[i][2] = y;
 
-		QuantumMasterEquation eq(Leff_data, std::pow(dim_size, 2 * radical_sys.get_num_radicals()));
-		eq.SparseSolver(vec, singlet_projection_operator);
-
+		/*
 		std::vector<state_type> x_vec = {};
 		std::vector<double> time = {};
 		observer ob(x_vec, time, olg);
@@ -483,8 +504,20 @@ int main()
 			y_list.push_back(f(ps[i][1], tlist[i], KF)); //only looking at the singlet fraction of the second radical pair due to the current scheme 
 		}
 		yeild = KF * simpson_integration(tlist, y_list);
-
+		*/
+		i++;
 	}
+#if MODE == 1:
+	std::string filename = "radical_pair_yeild_only_" + time_string + ".txt";
+	std::fstream file;
+	file.open(filename, std::ios::app);
+	for (int i = 0; i < yeilds.size(); i++)
+	{
+		file << yeilds[i][0] << " , " << yeilds[i][1] << " , " << yeilds[i][2] << "\n";
+	}
+	file.close();
+
+#endif
 
 	delete olg;
 	
