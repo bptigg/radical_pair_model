@@ -19,6 +19,7 @@ struct system_setup
 	int num_radicals = 0;
 	std::vector<double> rate_constants = {};
 	std::vector<int> dims = {};
+	int mode;
 };
 
 class Structure
@@ -35,16 +36,18 @@ private:
 	std::vector<Matrix> m_OrientationFreeHamiltonians;
 	std::vector<Matrix> m_Hamiltonians;
 
+	system_setup sys;
+
 private:
 	Matrix SingleRadicalPair(Matrix& singlet_projection_operator);
-	Matrix DoubleRadicalPair(Matrix& singlet_projection_operator);
+	std::vector<Matrix> DoubleRadicalPair(Matrix& singlet_projection_operator);
 
 public:
 	void UpdateZeemanHamiltonian(std::array<double, 3> b0_orientaion);
 	void CreateRadicalSystem();
-	Matrix CreateSuperOperator(Matrix& singlet_projection_operator);
+	std::vector<Matrix> CreateSuperOperator(Matrix& singlet_projection_operator);
 
-	Structure(Structure_param param);
+	Structure(Structure_param param, system_setup system);
 
 	~Structure();
 

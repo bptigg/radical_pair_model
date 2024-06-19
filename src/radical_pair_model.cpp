@@ -8,8 +8,6 @@
 #include <string>
 #include <filesystem>
 
-
-//#include "spin_operator.h"
 #include "Methods.h"
 #include "constants.h"
 #include "Structure.h"
@@ -21,9 +19,8 @@
 #include <boost\numeric\odeint\external\openmp\openmp.hpp>
 #include <Eigen/Eigenvalues>
 
-//#include <Eigen\SuperLUSupport>
 
-#pragma warning( disable : 4996)
+#pragma warning(disable : 4996)
 
 
 typedef std::vector<std::complex<double>> state_type;
@@ -31,15 +28,19 @@ using namespace boost::numeric;
 typedef odeint::runge_kutta_dopri5<state_type> stepper_type;
 
 
+enum class mode
+{
+	DirectTimeIntegration = 0,
+	LaplacianDirect,
+	LaplacianIterative
+};
+
 #define MODE 1
 
-
-//typedef std::vector<std::tuple<double, std::complex<double>, std::complex<double>>> TrajectoryType;
 typedef std::vector<std::pair<double, std::vector<std::complex<double>>>> TrajectoryType;
 
 class QuantumMasterEquation
 {
-	//Eigen::MatrixXcd m_supor;
 	Matrix m_supor;
 	Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* m_cached_matrix;
 	int m_dims;
@@ -80,76 +81,25 @@ public:
 	{
 		Eigen::SparseLU<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> Solver;
 
-		int n = 16;
-		omp_set_num_threads(n);
-		Eigen::setNbThreads(n);
-
-		//Eigen::BiCGSTAB<Matrix> Solver2;
-		//
-		//int leff_size = m_dims * 0.5;
-		//Matrix m_supor_preconditioner(m_dims, m_dims);
-		//Matrix top_left = m_supor.topLeftCorner(leff_size, leff_size);
-		//Matrix bottom_right = m_supor.bottomRightCorner(leff_size, leff_size);
-		//
-		//std::vector<Matrix*> mat_corner = { &top_left, &bottom_right };
-		//
-		//typedef Eigen::Triplet<std::complex<double>, int32_t> T;
-		//std::vector<T> entries;
-		//
-		//for (int i = 0; i < 2; i++)
-		//{
-		//	for (int j = 0; j < leff_size; j++)
-		//	{
-		//		//int ind_size = mat_corner[i]->row(j).coeffs().size();
-		//		//std::cout << ind_size << std::endl;
-		//		for (int k = 0; k < leff_size; k++)
-		//		{
-		//			std::complex<double> value = mat_corner[i]->coeff(j, k);
-		//			if (value == std::complex<double>(0.0, 0.0))
-		//			{
-		//				continue;
-		//			}
-		//			std::pair<int, int> pos = { (i * leff_size) + j, (i * leff_size) + k };
-		//			entries.push_back(T(pos.first, pos.second, value));
-		//		}
-		//	}
-		//}
-		//m_supor_preconditioner.setFromTriplets(entries.begin(), entries.end());
-
-		//Solver.compute(m_supor_preconditioner);
 		Solver.compute(m_supor);
 		if (Solver.info() != Eigen::Success)
 		{
 			return 0;
 		}
 
-		//Eigen::VectorXcd rho_naught_2(m_dims);
 		Eigen::SparseVector<std::complex<double>> rho_naught(m_dims);
 		
 		for (int i = 0; i < m_dims; i++)
 		{
 			if (i >= rho.size())
 			{
-				//rho_naught.coeffRef(i) = std::complex<double>(0, 0);
 				break;
 			}
 			else if (rho[i] != std::complex<double>(0, 0))
 			{
 				rho_naught.coeffRef(i) = rho[i];
 			}
-
-			//guess[i] = rho_naught[i] / m_supor.coeff(i, i);
 		}
-
-		//Eigen::VectorXcd guess(m_dims);
-		//guess = Solver.solve(rho_naught);
-		//
-		//Solver2.compute(m_supor);
-		//rho_naught_2 = Eigen::VectorXcd(rho_naught);
-		//Eigen::VectorXcd observable(m_dims);
-		//Solver2.setTolerance(1e-16);
-		//double error = 1;
-		//observable = Solver2.solveWithGuess(rho_naught_2, guess);
 
 		Eigen::SparseVector<std::complex<double>> observable(m_dims);
 		observable = Solver.solve(rho_naught);
@@ -188,7 +138,12 @@ public:
 		}
 		return total_yeild;
 	}
-
+	
+	double SparseSolverIterative(const state_type& rho, const Matrix& projection_operator, const Matrix& secondary_supor, system_setup& setup)
+	{
+		Matrix B = secondary_supor;
+		Matrix C = B - m_supor;
+	}
 };
 
 class output_lock_guard
@@ -249,7 +204,6 @@ struct observer
 		}
 
 		m_olg->UpdateWriteLimit(m_write_limit);
-
 	}
 
 	std::tuple<std::vector<state_type>, std::vector<double>> get_data()
@@ -326,8 +280,16 @@ int main()
 	one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
 	//one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
 
-	Structure radical_sys(two_radical);
+	mode model_mode = mode::LaplacianDirect;
+	system_setup setup;
+	setup.mode = (int)model_mode;
+	setup.rate_constants = { KF_C, KF_D };
+
+	Structure radical_sys(two_radical, setup);
 	radical_sys.CreateRadicalSystem();
+
+	setup.num_radicals = radical_sys.get_num_radicals();
+	setup.dims = radical_sys.get_dims();
 
 	MATRIX3x3 ide;
 	
@@ -353,14 +315,15 @@ int main()
 	state_type vec = {};
 	
 	{
-		Matrix rho_c = singlet_projection_operator / singlet_projection_operator.diagonal().sum();
-		//Matrix rho_d = MakeZeroOperator(dims);
-
-		auto vec_c = FlattenMatrixVec(rho_c);
-		//auto vec_d = FlattenMatrixVec(rho_d);
-
-		vec.insert(vec.end(), std::make_move_iterator(vec_c.begin()), std::make_move_iterator(vec_c.end()));
-		//vec.insert(vec.end(), std::make_move_iterator(vec_d.begin()), std::make_move_iterator(vec_d.end()));
+		Matrix rho_0 = singlet_projection_operator / singlet_projection_operator.diagonal().sum();
+		auto vec_0 = FlattenMatrixVec(rho_0);
+		vec.insert(vec.end(), std::make_move_iterator(vec_0.begin()), std::make_move_iterator(vec_0.end()));
+		for (int i = 1; i < radical_sys.get_num_radicals(); i++)
+		{
+			Matrix rho = MakeZeroOperator(dims);
+			auto vec_t = FlattenMatrixVec(rho);
+			vec.insert(vec.end(), std::make_move_iterator(vec_t.begin()), std::make_move_iterator(vec_t.end()));
+		}
 	}
 
 	std::vector<std::array<double, 3>> oris = {};
@@ -393,18 +356,30 @@ int main()
 			std::filesystem::create_directory("Results");
 		}
 
-		filepath = std::string("Results/yeild/test.txt");
-		exists = std::filesystem::is_directory(filepath.parent_path());
-		if (!exists)
+		if (model_mode == mode::LaplacianDirect || model_mode == mode::LaplacianIterative)
 		{
-			std::filesystem::create_directory("Results/yeild");
+			filepath = std::string("Results/yeild/test.txt");
+			exists = std::filesystem::is_directory(filepath.parent_path());
+			if (!exists)
+			{
+				std::filesystem::create_directory("Results/yeild");
+			}
+		}
+		else if (model_mode == mode::DirectTimeIntegration)
+		{
+			filepath = std::string("Results/SingletFraction/test.txt");
+			exists = std::filesystem::is_directory(filepath.parent_path());
+			if (!exists)
+			{
+				std::filesystem::create_directory("Results/SingletFraction");
+			}
 		}
 	}
 
 	output_lock_guard* olg = new output_lock_guard;
 	int i = 0;
 	for (auto ori : oris)
-	{;
+	{
 		olg->UpdateKill(false);
 		int dim_size = radical_sys.get_dims(true)[0];
 		Matrix Leff_data(dim_size, dim_size);
@@ -412,103 +387,94 @@ int main()
 		{
 			auto b0vec = multiply(ori, B0);
 			radical_sys.UpdateZeemanHamiltonian(b0vec);
-			//Matrix Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
-			Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator);
+			Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator)[0];
 			radical_sys.clear();
-#if MODE == 0:
+
+		}
+
+		if (model_mode == mode::LaplacianDirect)
+		{
+			QuantumMasterEquation eq(Leff_data, Leff_data.rows());
+			double y = eq.SparseSolver(vec, singlet_projection_operator, setup);
+			yeilds[i][2] = y;
+		}
+		else if (model_mode == mode::LaplacianIterative)
+		{
+			QuantumMasterEquation eq(Leff_data, Leff_data.rows());
+			//double y = eq.SparseSolverIterative(vec, singlet_projection_operator, setup);
+			//yeilds[i][2] = y;
+		}
+		else if(model_mode == mode::DirectTimeIntegration)
+		{
 			DotProductVec(Leff_data, {}, true);
-#endif
-		}
 
-		//Matrix m(1, 1);
-		//QuantumMasterEquation eq(m);
-		system_setup setup = { radical_sys.get_num_radicals(), {KF_C, KF_D}, radical_sys.get_dims()};
-		QuantumMasterEquation eq(Leff_data, Leff_data.rows());
-		double y = eq.SparseSolver(vec, singlet_projection_operator, setup);
-		yeilds[i][2] = y;
+			Matrix m(1, 1);
+			QuantumMasterEquation eq(m);
 
-		/*
-		std::vector<state_type> x_vec = {};
-		std::vector<double> time = {};
-		observer ob(x_vec, time, olg);
+			std::vector<state_type> x_vec = {};
+			std::vector<double> time = {};
+			observer ob(x_vec, time, olg);
 
-		TrajectoryType traj = { {0.0, {std::complex<double>(1.0,0)}} };
-		//TrajectoryType traj = {std::make_tuple(0.0, std::complex<double>(1.0,0), std::complex<double>(0.0,0.0))};
-		Simulation* sim = new Simulation(&traj, olg, &ob, &singlet_projection_operator, radical_sys.get_num_radicals());
+			TrajectoryType traj = { {0.0, {std::complex<double>(1.0,0)}} };
+			Simulation* sim = new Simulation(&traj, olg, &ob, &singlet_projection_operator, radical_sys.get_num_radicals());
 
-		std::thread sim_thread(&Simulation::state_fraction, sim);
+			std::thread sim_thread(&Simulation::state_fraction, sim);
+			
+			auto steps = odeint::integrate_const(stepper_type(), eq, vec, 0.0, t_max, 0.001, ob);
+			KillThreadPool();
 
-		double abs_error = 1e-8, rel_error = 1e-6;
-		auto steps = odeint::integrate_const(stepper_type(), eq, vec, 0.0, t_max, 0.001, ob);
-		KillThreadPool();
+			olg->UpdateKill(true);
+			sim_thread.join();
+			delete sim;
 
-		olg->UpdateKill(true);
-		sim_thread.join();
-		delete sim;
+			std::vector<double> tlist;
+			std::vector<std::vector<double>> ps;
+			std::vector<std::string> FileVec;
 
-		auto [data, times] = ob.get_data();
-		for (int i = 0; i < time.size(); i++)
-		{
-			state_type result_all = data[i];
-			const size_t vec_size = result_all.size() / 2;
-
-			state_type result_1(result_all.begin(), result_all.begin() + vec_size);
-			state_type result_2(result_all.begin() + vec_size, result_all.end());
-
-			Matrix rho_1 = ReformMatrix(result_1);
-			Matrix result_mat_1 = singlet_projection_operator * rho_1;
-			Matrix rho_2 = ReformMatrix(result_1);
-			Matrix result_mat_2 = singlet_projection_operator * rho_2;
-
-			//traj.push_back(std::make_tuple(time[i], result_mat_1.diagonal().sum(), result_mat_2.diagonal().sum()));
-		}
-
-		std::vector<double> tlist;
-		std::vector<std::vector<double>> ps;
-		std::vector<std::string> FileVec;
-
-		for (int i = 0; i < radical_sys.get_num_radicals(); i++)
-		{
-			std::string filename = "radical_pair_" + std::to_string((i + 1)) + "_" + time_string + ".txt";
-			FileVec.push_back(filename);
-		}
-
-		std::fstream file;
-		
-		for (int e = 0; e < traj.size(); e++)
-		{
-			auto [t, tr] = traj[e];
-			tlist.push_back(t);
-
-			std::vector<double> RealTrace;
-			for (auto trace : tr)
+			for (int e = 0; e < radical_sys.get_num_radicals(); e++)
 			{
-				RealTrace.push_back(trace.real());
+				std::string filename = "Results/SingletFraction/radical_pair_" + std::to_string(yeilds[i][0]) + std::to_string(yeilds[i][1]) + "_" + std::to_string((e + 1)) + "_" + time_string + ".txt";
+				FileVec.push_back(filename);
 			}
 
-			for (int i = 0; i < radical_sys.get_num_radicals(); i++)
+			std::fstream file;
+
+			for (int e = 0; e < traj.size(); e++)
 			{
-				file.open(FileVec[i], std::ios::app);
-				file << tlist[e] << " , " << RealTrace[i] << "\n";
-				file.close();
+				auto [t, tr] = traj[e];
+				tlist.push_back(t);
+
+				std::vector<double> RealTrace;
+				for (auto trace : tr)
+				{
+					RealTrace.push_back(trace.real());
+				}
+
+				for (int a = 0; a < radical_sys.get_num_radicals(); a++)
+				{
+					file.open(FileVec[a], std::ios::app);
+					file << tlist[e] << " , " << RealTrace[a] << "\n";
+					file.close();
+				}
 			}
-		}
 
-		double yeild = 0;
+			double yeild = 0;
 
-		auto f = [](double ps, double t, double kr) {return ps * std::exp(-kr * t); };
+			auto f = [](double ps, double t, double kr) {return ps * std::exp(-kr * t); };
+
+			std::vector<double> y_list = {};
+			for (int e = 0; e < ps.size(); e++)
+			{
+				y_list.push_back(f(ps[i][1], tlist[i], KF)); //only looking at the singlet fraction of the second radical pair due to the current scheme 
+			}
+			yeild = KF * simpson_integration(tlist, y_list);
+			yeilds[i][2] = yeild;
 		
-		std::vector<double> y_list = {};
-		for (int i = 0; i < ps.size(); i++)
-		{
-			y_list.push_back(f(ps[i][1], tlist[i], KF)); //only looking at the singlet fraction of the second radical pair due to the current scheme 
 		}
-		yeild = KF * simpson_integration(tlist, y_list);
-		*/
 		i++;
 	}
-#if MODE == 1:
-	std::string filename = "radical_pair_yeild_only_" + time_string + ".txt";
+
+	std::string filename = "Results/yeild/radical_pair_yeild_only_" + time_string + ".txt";
 	std::fstream file;
 	file.open(filename, std::ios::app);
 	for (int i = 0; i < yeilds.size(); i++)
@@ -516,8 +482,6 @@ int main()
 		file << yeilds[i][0] << " , " << yeilds[i][1] << " , " << yeilds[i][2] << "\n";
 	}
 	file.close();
-
-#endif
 
 	delete olg;
 	

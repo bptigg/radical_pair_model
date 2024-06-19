@@ -34,7 +34,7 @@ Matrix Structure::SingleRadicalPair(Matrix& singlet_projection_operator)
 
     return Leff;
 }
-Matrix Structure::DoubleRadicalPair(Matrix& singlet_projection_operator)
+std::vector<Matrix> Structure::DoubleRadicalPair(Matrix& singlet_projection_operator)
 {
     Matrix identity_mat = MakeSpinOperator(m_dims, {});
     int Liouville_dim = std::pow(m_dim, 2);
@@ -75,10 +75,19 @@ Matrix Structure::DoubleRadicalPair(Matrix& singlet_projection_operator)
 
         for (int i = 0; i < 4; i++)
         {
+            if (sys.mode == 2 and (i == 1 || i == 2))
+            {
+                continue;
+            }
             for (int j = 0; j < Leff_size; j++)
             {
                 for (int k = 0; k < Leff_size; k++)
                 {
+                    if (sys.mode == 2 and (j == k))
+                    {
+                        continue;
+                    }
+
                     std::complex<double> value = mat_corner[i]->coeff(j, k);
                     if (value == std::complex<double>(0.0, 0.0))
                     {
@@ -90,8 +99,42 @@ Matrix Structure::DoubleRadicalPair(Matrix& singlet_projection_operator)
             }
         }
         Leff_data.setFromTriplets(entries.begin(), entries.end());
+        
+        if (sys.mode != 2)
+        {
+            return { Leff_data };
+        }
+
+        entries.clear();
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < Leff_size; j++)
+            {
+                for (int k = 0; k < Leff_size; k++)
+                {
+                    if (sys.mode == 2 and (i == 0 || i == 3))
+                    {
+                        if (j != k)
+                        {
+                            continue;
+                        }
+                    }
+
+                    std::complex<double> value = mat_corner[i]->coeff(j, k);
+                    if (value == std::complex<double>(0.0, 0.0))
+                    {
+                        continue;
+                    }
+                    std::pair<int, int> pos = { (std::floor((double)i / 2.0) * Leff_size) + j, ((i) % 2 * Leff_size) + k };
+                    entries.push_back(T(pos.first, pos.second, value));
+                }
+            }
+        }
+
+        Matrix ExchangeMatrix(dim_size, dim_size);
+        ExchangeMatrix.setFromTriplets(entries.begin(), entries.end());
+        return { Leff_data , ExchangeMatrix };
     }
-    return Leff_data;
 }
 void Structure::UpdateZeemanHamiltonian(std::array<double, 3> b0_orientaion)
 {
@@ -170,12 +213,12 @@ void Structure::CreateRadicalSystem()
     }
 }
 
-Matrix Structure::CreateSuperOperator(Matrix& singlet_projection_operator)
+std::vector<Matrix> Structure::CreateSuperOperator(Matrix& singlet_projection_operator)
 {
     switch (m_NumRadicals)
     {
     case 1:
-        return SingleRadicalPair(singlet_projection_operator);
+        return { SingleRadicalPair(singlet_projection_operator) };
         break;
     case 2:
         return DoubleRadicalPair(singlet_projection_operator);
@@ -185,7 +228,8 @@ Matrix Structure::CreateSuperOperator(Matrix& singlet_projection_operator)
     }
 }
 
-Structure::Structure(Structure_param param)
+Structure::Structure(Structure_param param, system_setup system)
+    :sys(system)
 {
     m_NumRadicals = param.num_radicals;
     m_DipoleDipoleRadicalBinding = param.DipoleBinding;

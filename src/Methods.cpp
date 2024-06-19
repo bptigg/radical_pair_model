@@ -274,8 +274,6 @@ std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<s
 
 	std::sort(TempVec.begin(), TempVec.end(), SortPair);
 
-	//MergeSort(DotReturnVec, 0, DotReturnVec.size() - 1);
-	//sort(DotReturnVec); //put quicksort in tommorow
 	std::vector<std::complex<double>> ReturnVec;
 
 	for (int i = 0; i < DotReturnVec.size(); i++)
@@ -394,6 +392,118 @@ std::vector<std::array<double, 3>> FibonacciSphere(int n)
 	}
 
 	return points;
+}
+
+Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inverse of a matrix that's been built using a block layout 
+{
+	std::vector<Matrix> blocks;
+	if (dim > 2) //not in 2x2 block form 
+	{
+		std::vector<std::pair<int, int>> dimensions;
+		dimensions.push_back({ 1,1 });
+		dimensions.push_back({ dim - 1, 1 });
+		dimensions.push_back({ 1, dim - 1 });
+		dimensions.push_back({ dim - 1, dim - 1 });
+
+		//doing the biggest block first
+
+		typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+		std::vector<T> entries;
+
+		int RightLowerDim = (dim - 1) * inner_block_size;
+		Matrix S(RightLowerDim, RightLowerDim);
+		for (int i = inner_block_size; i < (dim * inner_block_size); i++)
+		{
+			Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+			int size = row.data().size();
+			for (int e = 0; e < size; i++)
+			{
+				int index = row.data().index(e);
+
+				if (index < inner_block_size)
+				{
+					continue;
+				}
+
+				std::complex<double> val = row.coeff(e);
+				entries.push_back(T(i, index, val));
+			}
+		}
+		S.setFromTriplets(entries.begin(), entries.end());
+
+		entries.clear();
+		Matrix B_00_inverse(inner_block_size, inner_block_size);
+		for (int i = 0; i < inner_block_size; i++)
+		{
+			Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+			int size = row.data().size();
+			for (int e = 0; e < size; i++)
+			{
+				int index = row.data().index(e);
+
+				if (index >= inner_block_size)
+				{
+					continue;
+				}
+
+				std::complex<double> val = row.coeff(e);
+
+				entries.push_back(T(i, index, val));
+			}
+		}
+		B_00_inverse.setFromTriplets(entries.begin(), entries.end()); //B_00 is diagonal so the inverse is the same matrix divided by the determinant
+		std::complex<double> OneOverDet = std::complex(1.0) / B_00_inverse.diagonal().prod();
+		B_00_inverse = B_00_inverse * OneOverDet;
+
+		entries.clear();
+		Matrix B_01(dimensions[1].first * inner_block_size, inner_block_size);
+		for (int i = 0; i < inner_block_size; i++)
+		{
+			Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+			int size = row.data().size();
+			for (int e = 0; e < size; i++)
+			{
+				int index = row.data().index(e);
+
+				if (index < inner_block_size)
+				{
+					continue;
+				}
+
+				std::complex<double> val = row.coeff(e);
+
+				entries.push_back(T(i, index, val));
+			}
+		}
+		B_01.setFromTriplets(entries.begin(), entries.end());
+		
+		entries.clear();
+		Matrix B_10(inner_block_size, dimensions[2].second * inner_block_size);
+		for (int i = inner_block_size; i < dim * inner_block_size; i++)
+		{
+			Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+			int size = row.data().size();
+			for (int e = 0; e < size; i++)
+			{
+				int index = row.data().index(e);
+
+				if (index >= inner_block_size)
+				{
+					continue;
+				}
+
+				std::complex<double> val = row.coeff(e);
+
+				entries.push_back(T(i, index, val));
+			}
+		}
+
+		S = S - (B_10 * B_00_inverse * B_01);
+		Matrix S_inverse = BlockInverse(S, dimensions[3].first, inner_block_size);
+
+		blocks = { B_00_inverse, B_01, B_10, S_inverse };
+	}
+	return Matrix();
 }
 
 

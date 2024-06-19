@@ -37,6 +37,8 @@ Eigen::Vector4d SingletState();
 double simpson_integration(std::vector<double> x_list, std::vector<double> y_list = {});
 std::vector<std::array<double,3>> FibonacciSphere(int n);
 
+Matrix BlockInverse(Matrix mat, int dim, int inner_block_size);
+
 template<typename t, int s1, int s2>
 Eigen::Vector<t, s1* s2> TensorProduct(Eigen::Vector<t, s1> v1, Eigen::Vector<t, s2> v2)
 {
