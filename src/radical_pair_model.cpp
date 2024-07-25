@@ -32,8 +32,10 @@ enum class mode
 {
 	DirectTimeIntegration = 0,
 	LaplacianDirect,
-	LaplacianIterative
+	LaplacianIterative,
+	LaplacianThomas
 };
+
 
 #define MODE 1
 
@@ -46,6 +48,12 @@ class QuantumMasterEquation
 	int m_dims;
 
 public:
+	QuantumMasterEquation(int dims)
+	{
+		m_cached_matrix = nullptr;
+		m_dims = dims;
+	}
+
 	QuantumMasterEquation(Matrix& SuperOperator)
 		:m_supor(SuperOperator)
 	{
@@ -138,12 +146,193 @@ public:
 		}
 		return total_yeild;
 	}
-	
-	double SparseSolverIterative(const state_type& rho, const Matrix& projection_operator, const Matrix& secondary_supor, system_setup& setup)
+
+	double SparseSolverThomas(const state_type& rho, const Matrix& projection_operator, system_setup& setup)
 	{
-		Matrix B = secondary_supor;
-		Matrix C = B - m_supor;
+		int NumBlocksPerRow = setup.num_radicals;
+		int MatrixSize = m_supor.rows();
+		int BlockSize = (double)MatrixSize / (double)NumBlocksPerRow; //Blocks are sqaure initially
+
+		std::vector<Matrix> blocks = {};
+		std::vector<state_type> rho_blocks = {};
+
+		typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+		std::vector<T> entries;
+
+		for (int i = 0; i < NumBlocksPerRow; i++)
+		{
+			state_type RhoBlock = {};
+			for (int a = 0; a < BlockSize; a++)
+			{
+				RhoBlock.push_back(rho[i * BlockSize + a]);
+			}
+			for (int e = 0; e < NumBlocksPerRow; e++)
+			{
+				if (e == i - 1 || e == i || e == i + 1)
+				{
+					Matrix block(BlockSize, BlockSize);
+					
+					int NumElements = std::pow(BlockSize, 2);
+					int row = -1;
+
+					int offsetY = i * BlockSize, offsetX = e * BlockSize;
+					entries.clear();
+					while(row + 1 < BlockSize)
+					{
+						row = row + 1;
+						Eigen::SparseVector<std::complex<double>> MatRow = m_supor.row(offsetY + row);
+						int ind_size = MatRow.data().size();
+						for (int k = 0; k < ind_size; k++)
+						{
+							int index = MatRow.data().index(k);
+							if (index >= BlockSize + offsetX)
+							{
+								break;
+							}
+							else if (index < offsetX)
+							{
+								continue;
+							}
+
+							entries.push_back(T(row, index - offsetX, MatRow.coeff(index)));
+						}
+					}
+					block.setFromTriplets(entries.begin(), entries.end());
+					blocks.push_back(block);
+					entries.clear();
+				}
+			}
+			rho_blocks.push_back(RhoBlock);
+		}
+
+		return 0.0;
 	}
+	
+	double SparseSolverIterative(const state_type& rho, const Matrix& projection_operator, const std::pair<Matrix&, Matrix&>SecondaryMatrixList, system_setup& setup)
+	{
+		Matrix BInverse = SecondaryMatrixList.first;
+		
+		Matrix D; 
+		{
+			Matrix C = SecondaryMatrixList.second;
+			D = BInverse * C;
+			Matrix id = identity(D.rows());
+			D = D - id;
+		}
+
+		Matrix K(rho.size(), 1);
+		{
+			KillThreadPool();
+			state_type k = DotProductVec(BInverse, rho);
+
+			typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+			std::vector<T> entries;
+
+			for (int i = 0; i < rho.size(); i++)
+			{
+				if (k[i].real() == 0 && k[i].imag() == 0)
+				{
+					continue;
+				}
+				entries.push_back(T(i, 0, k[i]));
+			}
+			K.setFromTriplets(entries.begin(), entries.end());
+		}
+
+		//Eigen::BiCGSTAB<Matrix> Solver;
+		//
+		//Solver.compute(D);
+		//if (Solver.info() != Eigen::Success)
+		//{
+		//	return 0;
+		//}
+		//
+		//Eigen::SparseVector<std::complex<double>> KCol = K.col(0);
+		//
+		//Eigen::SparseVector<std::complex<double>> observable(m_dims);
+		//observable = Solver.solve(KCol);
+		std::vector<double> yeilds = {};
+
+		for (int i = 0; i < setup.num_radicals; i++)
+		{
+			state_type vec = {};
+			for (int e = 0; e < setup.num_radicals; e++)
+			{
+				if (e != i)
+				{
+					state_type vec_temp = FlattenMatrixVec(MakeZeroOperator(setup.dims));
+					vec.insert(vec.end(), vec_temp.begin(), vec_temp.end());
+				}
+				else
+				{
+					state_type projection_vec = FlattenMatrixVec(projection_operator);
+					vec.insert(vec.end(), projection_vec.begin(), projection_vec.end());
+				}
+			}
+
+			std::complex<double> sum(0, 0);
+			for (int a = 0; a < vec.size(); a++)
+			{
+				//sum = sum + (setup.rate_constants[i] * vec[a] * observable.coeff(a));
+			}
+			double yeild = sum.real();
+			yeilds.push_back(yeild);
+		}
+
+		double total_yeild = 0.0;
+
+		for (int i = 0; i < yeilds.size(); i++)
+		{
+			total_yeild = total_yeild + yeilds[i];
+		}
+		return total_yeild;
+	}
+
+		//KillThreadPool();
+		//auto MatrixRecursion = [&D, &K, &col](state_type x)
+		//	{
+		//		state_type xp1 = DotProductVec(D, x);
+		//		for (int i = 0; i < K.rows(); i++)
+		//		{
+		//			xp1[i] = xp1[i] + col.coeff(i);
+		//		}
+		//		return xp1;
+		//	}; 
+
+		//auto VectorDiff = [](state_type vec_1, state_type vec_2)
+		//	{
+		//		std::complex<double> diff_sqaured = 0;
+		//		for (int i = 0; i < vec_1.size(); i++)
+		//		{
+		//			std::complex<double> diff_temp = vec_2[i] - vec_1[i];
+		//			if (diff_temp == std::complex<double>(0))
+		//			{
+		//				continue;
+		//			}
+		//			diff_sqaured = diff_sqaured + std::pow(diff_temp, 2);
+		//		}
+		//		double diff = std::abs(std::sqrt(diff_sqaured));
+		//		return diff;
+		//	};
+		//
+		//bool convergance = false;
+		//state_type vec;
+		//for (int i = 0; i < rho.size(); i++)
+		//{
+		//	vec.push_back(0);
+		//}
+		//state_type vec2;
+		//while (convergance != true)
+		//{
+		//	vec2 = MatrixRecursion(vec);
+		//	if (VectorDiff(vec, vec2) <= setup.tolarence)
+		//	{
+		//		convergance = true;
+		//	}
+		//	vec = vec2;
+		//}
+
+
 };
 
 class output_lock_guard
@@ -280,7 +469,7 @@ int main()
 	one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
 	//one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
 
-	mode model_mode = mode::LaplacianDirect;
+	mode model_mode = mode::LaplacianThomas;
 	system_setup setup;
 	setup.mode = (int)model_mode;
 	setup.rate_constants = { KF_C, KF_D };
@@ -383,12 +572,20 @@ int main()
 		olg->UpdateKill(false);
 		int dim_size = radical_sys.get_dims(true)[0];
 		Matrix Leff_data(dim_size, dim_size);
+		Matrix SecondaryMat(dim_size, dim_size);
 
 		{
 			auto b0vec = multiply(ori, B0);
 			radical_sys.UpdateZeemanHamiltonian(b0vec);
-			Leff_data = radical_sys.CreateSuperOperator(singlet_projection_operator)[0];
+			auto MatrixVec = radical_sys.CreateSuperOperator(singlet_projection_operator);
 			radical_sys.clear();
+
+			if (model_mode == mode::LaplacianIterative)
+			{
+				SecondaryMat = MatrixVec[1];
+			}
+
+			Leff_data = MatrixVec[0];
 
 		}
 
@@ -398,10 +595,49 @@ int main()
 			double y = eq.SparseSolver(vec, singlet_projection_operator, setup);
 			yeilds[i][2] = y;
 		}
-		else if (model_mode == mode::LaplacianIterative)
+		else if (model_mode == mode::LaplacianThomas)
 		{
 			QuantumMasterEquation eq(Leff_data, Leff_data.rows());
-			//double y = eq.SparseSolverIterative(vec, singlet_projection_operator, setup);
+			double y = eq.SparseSolverThomas(vec, singlet_projection_operator, setup);
+		}
+		else if (model_mode == mode::LaplacianIterative)
+		{
+			//QuantumMasterEquation eq(Leff_data, Leff_data.rows());
+			QuantumMasterEquation eq(Leff_data.rows());
+			Matrix inverse = BlockInverse(SecondaryMat, setup.num_radicals, std::pow(radical_sys.get_dims(true)[0], 2));
+			Matrix c = -1 * Leff_data;
+			double y = eq.SparseSolverIterative(vec, singlet_projection_operator, { inverse, c}, setup);
+
+			//Matrix test(9, 9);
+			//typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+			//std::vector<T> entries;
+			//entries.push_back(T(0, 0, 6.0));
+			//entries.push_back(T(1, 1, 4.0));
+			//entries.push_back(T(2, 2, 5.0));
+			//entries.push_back(T(3, 3, 6.0));
+			//entries.push_back(T(4, 4, 3.0));
+			//entries.push_back(T(5, 5, 2.0));
+			//entries.push_back(T(6, 6, 6.0));
+			//entries.push_back(T(7, 7, 2.0));
+			//entries.push_back(T(8, 8, 9.0));
+			//entries.push_back(T(0, 3, 1.0));
+			//entries.push_back(T(1, 4, 1.0));
+			//entries.push_back(T(2, 5, 1.0));
+			//entries.push_back(T(3, 6, 2.0));
+			//entries.push_back(T(4, 7, 2.0));
+			//entries.push_back(T(5, 8, 2.0));
+			//entries.push_back(T(3, 0, 2.0));
+			//entries.push_back(T(4, 1, 2.0));
+			//entries.push_back(T(5, 2, 2.0));
+			//entries.push_back(T(6, 3, 1.0));
+			//entries.push_back(T(7, 4, 1.0));
+			//entries.push_back(T(8, 5, 1.0));
+			//test.setFromTriplets(entries.begin(), entries.end());
+			//std::cout << Eigen::MatrixXcd(test) << std::endl;
+			//Matrix inverse = BlockInverse(test, 3, 3);
+			//std::cout << Eigen::MatrixXcd(inverse) << std::endl;
+
+
 			//yeilds[i][2] = y;
 		}
 		else if(model_mode == mode::DirectTimeIntegration)

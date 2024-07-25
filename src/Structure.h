@@ -20,6 +20,7 @@ struct system_setup
 	std::vector<double> rate_constants = {};
 	std::vector<int> dims = {};
 	int mode;
+	double tolarence = 0.001;
 };
 
 class Structure
@@ -58,6 +59,7 @@ public:
 		}
 		return m_dims;
 	}
+	
 	int get_num_radicals() {
 		return m_NumRadicals;
 	}

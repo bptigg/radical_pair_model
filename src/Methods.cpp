@@ -257,7 +257,7 @@ std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<s
 	while (pool->Busy()) {};
 	pool->Stop();
 
-	typedef std::pair<int, int> TempVecType;
+	typedef std::pair<int, std::complex<double>> TempVecType;
 
 
 	auto SortPair = [&](TempVecType a, TempVecType b)
@@ -265,20 +265,31 @@ std::vector<std::complex<double>> DotProductVec(Matrix& mat, const std::vector<s
 			return b.first > a.first;
 		};
 
-	std::vector<TempVecType> TempVec;
-	TempVec.reserve(DotReturnVec.size() * sizeof(TempVecType));
+	//std::vector<TempVecType> TempVec;
+	//TempVec.reserve(DotReturnVec.size() * sizeof(TempVecType));
+	//for (int i = 0; i < DotReturnVec.size(); i++)
+	//{
+	//	TempVec.push_back({ DotReturnVec[i].first, i });
+	//}
+
+	//std::sort(TempVec.begin(), TempVec.end(), SortPair);
+	std::sort(DotReturnVec.begin(), DotReturnVec.end(), SortPair);
+#if _DEBUG
 	for (int i = 0; i < DotReturnVec.size(); i++)
 	{
-		TempVec.push_back({ DotReturnVec[i].first, i });
+		if (DotReturnVec[i].first != i)
+		{
+			std::cin.get();
+		}
 	}
-
-	std::sort(TempVec.begin(), TempVec.end(), SortPair);
+#endif
 
 	std::vector<std::complex<double>> ReturnVec;
 
 	for (int i = 0; i < DotReturnVec.size(); i++)
 	{
-		ReturnVec.push_back(DotReturnVec[TempVec[i].second].second);
+		//ReturnVec.push_back(DotReturnVec[TempVec[i].second].second);
+		ReturnVec.push_back(DotReturnVec[i].second);
 	}
 
 	return ReturnVec;
@@ -291,6 +302,10 @@ void StartThreadPool(int max_threads)
 
 void KillThreadPool()
 {
+	if (pool == nullptr)
+	{
+		return;
+	}
 	pool->Stop();
 	delete pool;
 	pool = nullptr;
@@ -415,7 +430,7 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	{
 		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
 		int size = row.data().size();
-		for (int e = 0; e < size; i++)
+		for (int e = 0; e < size; e++)
 		{
 			int index = row.data().index(e);
 
@@ -424,8 +439,8 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 				continue;
 			}
 
-			std::complex<double> val = row.coeff(e);
-			entries.push_back(T(i, index, val));
+			std::complex<double> val = row.coeff(index);
+			entries.push_back(T(i - inner_block_size, index - inner_block_size, val));
 		}
 	}
 	S.setFromTriplets(entries.begin(), entries.end());
@@ -436,7 +451,7 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	{
 		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
 		int size = row.data().size();
-		for (int e = 0; e < size; i++)
+		for (int e = 0; e < size; e++)
 		{
 			int index = row.data().index(e);
 
@@ -445,7 +460,7 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 				continue;
 			}
 
-			std::complex<double> val = row.coeff(e);
+			std::complex<double> val = row.coeff(index);
 
 			entries.push_back(T(i, index, val));
 		}
@@ -453,16 +468,16 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	B_00_inverse.setFromTriplets(entries.begin(), entries.end()); //B_00 is diagonal so the inverse is the reciprocal of the matrix elements 
 	for (int i = 0; i < inner_block_size; i++)
 	{
-		B_00_inverse.coeffRef(i, i) = std::complex(1.0) / B_00_inverse.coeff(i, i);
+		B_00_inverse.coeffRef(i, i) = std::complex(1.0) / (std::complex<double>)B_00_inverse.coeff(i, i);
 	}
 
 	entries.clear();
-	Matrix B_01(dimensions[1].first * inner_block_size, inner_block_size);
+	Matrix B_01(inner_block_size, dimensions[1].first * inner_block_size);
 	for (int i = 0; i < inner_block_size; i++)
 	{
 		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
 		int size = row.data().size();
-		for (int e = 0; e < size; i++)
+		for (int e = 0; e < size; e++)
 		{
 			int index = row.data().index(e);
 
@@ -471,20 +486,20 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 				continue;
 			}
 
-			std::complex<double> val = row.coeff(e);
+			std::complex<double> val = row.coeff(index);
 
-			entries.push_back(T(i, index, val));
+			entries.push_back(T(i, index - inner_block_size, val));
 		}
 	}
 	B_01.setFromTriplets(entries.begin(), entries.end());
 
 	entries.clear();
-	Matrix B_10(inner_block_size, dimensions[2].second * inner_block_size);
+	Matrix B_10(dimensions[2].second * inner_block_size, inner_block_size);
 	for (int i = inner_block_size; i < dim * inner_block_size; i++)
 	{
 		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
 		int size = row.data().size();
-		for (int e = 0; e < size; i++)
+		for (int e = 0; e < size; e++)
 		{
 			int index = row.data().index(e);
 
@@ -493,11 +508,13 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 				continue;
 			}
 
-			std::complex<double> val = row.coeff(e);
+			std::complex<double> val = row.coeff(index);
 
-			entries.push_back(T(i, index, val));
+			entries.push_back(T(i - inner_block_size, index, val));
 		}
 	}
+	B_10.setFromTriplets(entries.begin(), entries.end());
+	entries.clear();
 
 	S = S - (B_10 * B_00_inverse * B_01);
 	Matrix S_inverse(RightLowerDim, RightLowerDim);
@@ -509,7 +526,7 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	{
 		for (int i = 0; i < inner_block_size; i++)
 		{
-			S_inverse.coeffRef(i, i) = std::complex(1.0) / S.coeff(i, i);
+			S_inverse.coeffRef(i, i) = std::complex(1.0) / (std::complex<double>)S.coeff(i, i);
 		}
 	}
 	blocks = { B_00_inverse, B_01, B_10, S_inverse };
@@ -525,19 +542,19 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 		corners = { q1,q2,q3,S_inverse };
 	}
 
-	typedef Eigen::Triplet<std::complex<double>, int32_t> T;
-	std::vector<T> entries;
+	entries.clear();
 
 	for (int i = 0; i < 4; i++)
 	{
-		for (int j = 0; j < inner_block_size; j++)
+		int rows = corners[i].rows();
+		for (int j = 0; j < rows; j++)
 		{
 			Eigen::SparseVector<std::complex<double>> row = corners[i].row(j);
 			int size = row.data().size();
 			for (int k = 0; k < size; k++)
 			{
 				int index = row.data().index(k);
-				entries.push_back(T(j, index, row.coeff(index)));
+				entries.push_back(T((std::floor((double)i / 2.0) * inner_block_size) + j, ((i) % 2 * inner_block_size) + index, row.coeff(index)));
 			}
 		}
 	}
