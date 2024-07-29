@@ -6,9 +6,13 @@ static std::array<char, 3> axis = { 'x', 'y', 'z' };
 static int num_jobs = 0;
 //static std::vector<std::pair<int, std::vector<std::complex<double>>>> work;
 static std::vector<std::pair<int, Eigen::SparseVector<std::complex<double>>>> work;
+static std::vector<Eigen::SparseVector<std::complex<double>>> work_col;
 static std::mutex work_lock;
+static std::mutex cols_lock;
+static std::vector<std::pair<int, Eigen::SparseVector<std::complex<double>>>> cols_vec;
 static std::vector<std::pair<int, std::complex<double>>> DotReturnVec;
 static ThreadPool* pool = nullptr;
+int BaseSize = 32;
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> commutator(Matrix& A, Matrix& B)
 {
@@ -520,7 +524,7 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	Matrix S_inverse(RightLowerDim, RightLowerDim);
 	if (dim > 2) //not in 2x2 block form 
 	{
-		S_inverse = BlockInverse(S, dimensions[3].first, inner_block_size);
+		//S_inverse = BlockInverse(S, dimensions[3].first, inner_block_size);
 	}
 	else
 	{
@@ -565,7 +569,297 @@ Matrix BlockInverse(Matrix mat, int dim, int inner_block_size) //finds the inver
 	return InvertedMat;
 }
 
+bool Diagonal(const Matrix* mat)
+{
+	int rows = mat->rows();
+	for (int i = 0; i < rows; i++)
+	{
+		Eigen::SparseVector<std::complex<double>> row = mat->row(i);
+		if (row.data().size() > 1)
+		{
+			return false;
+		}
+		
+		if (row.data().index(0) != i)
+		{
+			return false;
+		}
+	}
 
+	return true;
+}
+
+Matrix GetInverse(const Matrix* mat, bool diagonal)
+{
+	int rows = mat->rows();
+	Matrix inverse(rows, rows);
+
+	typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+	std::vector<T> entries;
+
+	if (diagonal)
+	{
+		for (int i = 0; i < rows; i++)
+		{
+			entries.push_back(T(i, i, std::complex(1.0) / (std::complex<double>)mat->coeff(i, i)));
+		}
+		inverse.setFromTriplets(entries.begin(), entries.end());
+		return inverse;
+	}
+
+	//Eigen::SparseLU<Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>> solver;
+	//solver.compute(*mat);
+	auto ide = identity_col(rows);
+	work_col.clear();
+
+	auto SolveCol = [mat](int i)
+		{
+			Eigen::SparseLU<Matrix> solver;
+			solver.compute(*mat);
+			Eigen::SparseVector<std::complex<double>> xCol = solver.solve(work_col[i]);
+			cols_lock.lock();
+			cols_vec.push_back({ i,xCol });
+			cols_lock.unlock();
+		};
+
+	ThreadPool* SolvePool = new ThreadPool(std::thread::hardware_concurrency());
+
+	for (int i = 0; i < ide.cols(); i++)
+	{
+		work_col.push_back(ide.col(i));
+		SolvePool->QueueJob(SolveCol, i);
+		//cols.push_back(solver.solve(ide.col(i)));
+	}
+
+	SolvePool->start();
+	while (SolvePool->Busy()) {};
+	SolvePool->Stop();
+	work_col.clear();
+	
+	delete SolvePool;
+
+	typedef std::pair<int, Eigen::SparseVector<std::complex<double>>> TempVecType;
+
+
+	auto SortPair = [&](TempVecType a, TempVecType b)
+		{
+			return b.first > a.first;
+		};
+	std::sort(cols_vec.begin(), cols_vec.end(), SortPair);
+
+	for (int i = 0; i < cols_vec.size(); i++)
+	{
+		for (int e = 0; e < cols_vec[i].second.data().size(); e++)
+		{
+			int index = cols_vec[i].second.data().index(e);
+			std::complex<double> val = cols_vec[i].second.coeff(index);
+			if (std::abs(val) <= 1e-6)
+			{
+				continue;
+			}
+			entries.push_back(T(index, i, val));
+		}
+	}
+	inverse.setFromTriplets(entries.begin(), entries.end());
+	cols_vec.clear();
+	return inverse;
+}
+
+Matrix BlockInverse(const Matrix& mat, int dim) //Mat - matrix to invert, dim - number of rows/columns 
+{
+	std::vector<Matrix> blocks;
+
+	int BlockSize = 0;
+	BlockSize = (int)std::floor((double)mat.rows() / 2.0);
+
+	std::vector<std::pair<int, int>> dimensions;
+
+	dimensions.push_back({ BlockSize, BlockSize });
+	dimensions.push_back({ BlockSize, dim - BlockSize });
+	dimensions.push_back({ dim - BlockSize, BlockSize });
+	dimensions.push_back({ dim - BlockSize, dim - BlockSize });
+
+	typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+	std::vector<T> entries;
+
+	int RightLowerDim = dimensions[3].first;
+	Matrix S(RightLowerDim, RightLowerDim);
+	for (int i = BlockSize; i < dim; i++)
+	{
+		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+		int size = row.data().size();
+		for (int e = 0; e < size; e++)
+		{
+			int index = row.data().index(e);
+
+			if (index < BlockSize)
+			{
+				continue;
+			}
+
+			std::complex<double> val = row.coeff(index);
+			entries.push_back(T(i - BlockSize, index - BlockSize, val));
+		}
+	}
+	S.setFromTriplets(entries.begin(), entries.end());
+
+	entries.clear();
+	Matrix B_00(BlockSize, BlockSize);
+	for (int i = 0; i < BlockSize; i++)
+	{
+		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+		int size = row.data().size();
+		for (int e = 0; e < size; e++)
+		{
+			int index = row.data().index(e);
+
+			if (index >= BlockSize)
+			{
+				continue;
+			}
+
+			std::complex<double> val = row.coeff(index);
+
+			entries.push_back(T(i, index, val));
+		}
+	}
+	B_00.setFromTriplets(entries.begin(), entries.end());
+	
+	bool diag = Diagonal(&B_00);
+	Matrix B_00_inverse(BlockSize, BlockSize);
+	if (!diag && B_00.rows() > BaseSize)
+	{
+		B_00_inverse = BlockInverse(B_00, B_00.rows());
+	}
+	else if (diag)
+	{
+		B_00_inverse = GetInverse(&B_00, true);
+	}
+	else
+	{
+		B_00_inverse = GetInverse(&B_00, false);
+	}
+
+	{
+		Matrix empty(BlockSize, BlockSize);
+		B_00 = B_00 * empty;
+	}
+
+	entries.clear();
+	Matrix B_01(dimensions[1].first, dimensions[1].second);
+	for (int i = 0; i < BlockSize; i++)
+	{
+		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+		int size = row.data().size();
+		for (int e = 0; e < size; e++)
+		{
+			int index = row.data().index(e);
+
+			if (index < BlockSize)
+			{
+				continue;
+			}
+
+			std::complex<double> val = row.coeff(index);
+
+			entries.push_back(T(i, index - BlockSize, val));
+		}
+	}
+	B_01.setFromTriplets(entries.begin(), entries.end());
+
+	entries.clear();
+	Matrix B_10(dimensions[2].first, dimensions[2].second);
+	for (int i = BlockSize; i < dim; i++)
+	{
+		Eigen::SparseVector<std::complex<double>> row = mat.row(i);
+		int size = row.data().size();
+		for (int e = 0; e < size; e++)
+		{
+			int index = row.data().index(e);
+	
+			if (index >= BlockSize)
+			{
+				continue;
+			}
+	
+			std::complex<double> val = row.coeff(index);
+	
+			entries.push_back(T(i - BlockSize, index, val));
+		}
+	}
+	B_10.setFromTriplets(entries.begin(), entries.end());
+	entries.clear();
+
+	S = S - (B_10 * B_00_inverse * B_01);
+	diag = Diagonal(&S);
+	Matrix S_inverse(dimensions[3].first, dimensions[3].second);
+	if (!diag && B_00.rows() > BaseSize)
+	{
+		S_inverse = BlockInverse(S, S.rows());
+	}
+	else if (diag)
+	{
+		S_inverse = GetInverse(&S, true);
+	}
+	else
+	{
+		S_inverse = GetInverse(&S, false);
+	}
+
+	{
+		Matrix empty(S.rows(), S.cols());
+		S = S * empty;
+	}
+
+	std::vector<Matrix> corners;
+
+	{
+		Matrix q1 = B_00_inverse + (B_00_inverse * B_01 * S_inverse * B_10 * B_00_inverse);
+		Matrix q2 = std::complex(-1.0) * B_00_inverse * B_01 * S_inverse;
+		Matrix q3 = std::complex(-1.0) * S_inverse * B_10 * B_00_inverse;
+		//Matrix q4 = S_inverse
+
+		corners = { q1,q2,q3,S_inverse };
+	}
+
+	entries.clear();
+
+	for (int i = 0; i < 4; i++)
+	{
+		int rows = corners[i].rows();
+		for (int j = 0; j < rows; j++)
+		{
+			Eigen::SparseVector<std::complex<double>> row = corners[i].row(j);
+			int size = row.data().size();
+			for (int k = 0; k < size; k++)
+			{
+				int index = row.data().index(k);
+				
+				int rmod = 0, cmod = 0;
+				switch (i)
+				{
+				case 1:
+					rmod = 0;
+					cmod = BlockSize;
+					break;
+				case 2:
+					rmod = BlockSize;
+					cmod = 0;
+					break;
+				case 3:
+					rmod = BlockSize;
+					cmod = BlockSize;
+					break;
+				}
+				entries.push_back(T(rmod + j, cmod + index, row.coeff(index)));
+			}
+		}
+	}
+
+	Matrix InvertedMat(dim , dim);
+	InvertedMat.setFromTriplets(entries.begin(), entries.end());
+	return InvertedMat;
+}
 
 void sort(std::vector<std::pair<int, std::complex<double>>>& arr)
 {

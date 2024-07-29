@@ -8,6 +8,7 @@
 #include <array>
 #include <Eigen/Dense>
 #include <thread>
+#include <Eigen/SparseLU>
 
 #define MATRIX3x3 std::array<std::array<double,3>,3>
 
@@ -38,6 +39,7 @@ double simpson_integration(std::vector<double> x_list, std::vector<double> y_lis
 std::vector<std::array<double,3>> FibonacciSphere(int n);
 
 Matrix BlockInverse(Matrix mat, int dim, int inner_block_size);
+Matrix BlockInverse(const Matrix& mat, int dim);
 
 template<typename t, int s1, int s2>
 Eigen::Vector<t, s1* s2> TensorProduct(Eigen::Vector<t, s1> v1, Eigen::Vector<t, s2> v2)

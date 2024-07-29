@@ -63,6 +63,7 @@ for i in range(0,step):
         new_results.append(ainv @ (result_blocks[i] - np.array(blocks[e]) @ new_results[i-1]))
 
 print(row_blocks)
+print(new_results)
 
 x_vec = []
 for i in range(0,matrix_size):

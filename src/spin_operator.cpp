@@ -237,6 +237,7 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(std::vector<
 
 Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
 {
+
 	Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(dims, dims);
 	for (int i = 0; i < dims; i++)
 	{
@@ -245,12 +246,12 @@ Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor> identity(int dims)
 	return identity;
 }
 
-Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* identity_new(int dims)
+Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor> identity_col(int dims)
 {
-	Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>* identity = new Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor>(dims, dims);
+	Eigen::SparseMatrix<std::complex<double>, Eigen::ColMajor> identity(dims, dims);
 	for (int i = 0; i < dims; i++)
 	{
-		identity->coeffRef(i, i) = (std::complex<double>)1.0;
+		identity.coeffRef(i, i) = (std::complex<double>)1.0;
 	}
 	return identity;
 }

@@ -154,17 +154,22 @@ public:
 		int BlockSize = (double)MatrixSize / (double)NumBlocksPerRow; //Blocks are sqaure initially
 
 		std::vector<Matrix> blocks = {};
-		std::vector<state_type> rho_blocks = {};
+		std::vector<Matrix> rho_blocks = {};
 
 		typedef Eigen::Triplet<std::complex<double>, int32_t> T;
 		std::vector<T> entries;
 
 		for (int i = 0; i < NumBlocksPerRow; i++)
 		{
-			state_type RhoBlock = {};
+			std::vector<T> RhoBlock = {};
 			for (int a = 0; a < BlockSize; a++)
 			{
-				RhoBlock.push_back(rho[i * BlockSize + a]);
+				std::complex<double> val = rho[(i * BlockSize) + a];
+				if (val != std::complex(0.0))
+				{
+					RhoBlock.push_back(T(a, 0, rho[(i * BlockSize) + a]));
+				}
+
 			}
 			for (int e = 0; e < NumBlocksPerRow; e++)
 			{
@@ -202,8 +207,101 @@ public:
 					entries.clear();
 				}
 			}
-			rho_blocks.push_back(RhoBlock);
+			Matrix rho_block(BlockSize, 1);
+			rho_block.setFromTriplets(RhoBlock.begin(), RhoBlock.end());
+			rho_blocks.push_back(rho_block);
 		}
+
+		std::vector<std::vector<Matrix>> RowBlocks = {};
+		std::vector<Matrix> ResultsNew = {};
+
+		for (int i = 0; i < NumBlocksPerRow; i++) //sqaure so same as NumBlocksPerCol
+		{
+			std::vector<Matrix> RowBlockTemporary = {};
+			int e = (3 * i) - 1;
+			if (i == 0)
+			{
+				Matrix a = blocks[0];
+				Matrix inv = BlockInverse(a, blocks[0].rows());
+				RowBlockTemporary.push_back(identity(blocks[0].rows()));
+				RowBlockTemporary.push_back(inv * blocks[1]);
+				ResultsNew.push_back(inv * rho_blocks[i]);
+			}
+			else if (i == NumBlocksPerRow - 1)
+			{
+				Matrix a = blocks[e + 1];
+				Matrix b(a.rows(), a.cols());
+				b = blocks[e] * RowBlocks[i - 1][1];
+				a = a - b;
+				Matrix inv = BlockInverse(a, a.rows());
+				RowBlockTemporary.push_back(identity(inv.rows()));
+				Matrix c = blocks[e] * ResultsNew[i-1];
+				c = rho_blocks[i] - c;
+				ResultsNew.push_back(inv * c);
+			}
+			else
+			{
+				Matrix a = blocks[e + 1];
+				Matrix b(a.rows(), a.cols());
+				b = blocks[e] * RowBlocks[i - 1][1];
+				a = a - b;
+				Matrix inv = BlockInverse(a, a.rows());
+				RowBlockTemporary.push_back(identity(inv.rows()));
+				RowBlockTemporary.push_back(inv * blocks[e+2]);
+				Matrix c = blocks[e] * ResultsNew[i - 1];
+				c = rho_blocks[i] - c;
+				ResultsNew.push_back(inv * c);
+			}
+
+			RowBlocks.push_back(RowBlockTemporary);
+		}
+
+		//for (auto r : ResultsNew)
+		//{
+		//	std::cout << Eigen::MatrixXcd(r) << std::endl;
+		//}
+		//for (auto r : RowBlocks)
+		//{
+		//	for (auto a : r)
+		//	{
+		//		std::cout << Eigen::MatrixXcd(a);
+		//	}
+		//	std::cout << std::endl;
+		//}
+
+		Matrix xVec(rho.size(), 1);
+		entries.clear();
+		for (int e = 0; e < ResultsNew[NumBlocksPerRow - 1].rows(); e++)
+		{
+			entries.push_back(T(MatrixSize - ResultsNew[NumBlocksPerRow - 1].rows() + e, 0, ResultsNew[NumBlocksPerRow - 1].coeff(e, 0)));
+		}
+		xVec.setFromTriplets(entries.begin(), entries.end());
+
+		int num = 2;
+		for (int i = NumBlocksPerRow - 2; i > -1; i = i - 1)
+		{
+			std::vector<T> entries_b = {};
+			int n = 0;
+			for (int e = (i + 1) * BlockSize; e < (i + 2) * BlockSize; e++)
+			{
+				entries_b.push_back(T(n, 0, xVec.coeff(e,0)));
+				n = n + 1;
+			}
+			Matrix b(BlockSize, 1);
+			b.setFromTriplets(entries_b.begin(), entries_b.end());
+			Matrix a = RowBlocks[i][1] * b;
+			for (int e = 0; e < ResultsNew[i].rows(); e++)
+			{
+				entries.push_back(T(MatrixSize - (num * BlockSize) + e, 0, ResultsNew[i].coeff(e, 0) - a.coeff(e, 0)));
+			}
+			num = num + 1;
+			xVec.setFromTriplets(entries.begin(), entries.end());
+		}
+
+		xVec.setFromTriplets(entries.begin(), entries.end());
+		std::cout << Eigen::VectorXcd(xVec) << std::endl;
+		//calculate yeild
+
 
 		return 0.0;
 	}
@@ -449,6 +547,12 @@ public:
 
 int main() 
 {
+	int threads = std::thread::hardware_concurrency();
+	omp_set_num_threads(threads);
+	Eigen::setNbThreads(threads);
+	Eigen::initParallel();
+
+
 	std::time_t t = std::time(0);
 	std::tm now = *std::localtime(&t);
 	char buf[20];
@@ -456,7 +560,8 @@ int main()
 	std::string time_string = buf;
 
 	Structure_param two_radical;
-	two_radical.spins = {0.5, 0.5, 0.5};
+	//two_radical.spins = {1, 1, 1};
+	two_radical.spins = { 0.5, 0.5, 0.5 };
 	two_radical.num_radicals = 2;
 	two_radical.DipoleBinding = { {"EED_Wc", 0}, {"EED_Wd", 1} };
 	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0}, {"N5_Wd", {0,2}, 1}, {"N1_Wc", {1,4}, 1} };
@@ -495,14 +600,14 @@ int main()
 		}
 	
 	}
-	
+
 	auto dims = radical_sys.get_dims();
 	Matrix singlet_projection_operator = 0.25 * MakeSpinOperator(dims, {}) - MakeHamiltonian(dims, 0, 1, ide);
 	Matrix identity_mat = MakeSpinOperator(dims, {});
 	Matrix triplet_projection_operator = identity_mat - singlet_projection_operator;
 
 	state_type vec = {};
-	
+
 	{
 		Matrix rho_0 = singlet_projection_operator / singlet_projection_operator.diagonal().sum();
 		auto vec_0 = FlattenMatrixVec(rho_0);
@@ -597,16 +702,61 @@ int main()
 		}
 		else if (model_mode == mode::LaplacianThomas)
 		{
+			Matrix test(9, 9);
+			typedef Eigen::Triplet<std::complex<double>, int32_t> T;
+			std::vector<T> entries;
+			entries.push_back(T(0, 0, 1.0));
+			entries.push_back(T(0, 1, 2.0));
+			entries.push_back(T(0, 2, 3.0));
+			entries.push_back(T(0, 3, 1.0));
+			entries.push_back(T(1, 0, 4.0));
+			entries.push_back(T(1, 2, 6.0));
+			entries.push_back(T(1, 4, 1.0));
+			entries.push_back(T(2, 0, 7.0));
+			entries.push_back(T(2, 1, 8.0));
+			entries.push_back(T(2, 2, 9.0));
+			entries.push_back(T(2, 5, 1.0));
+			entries.push_back(T(3, 0, 1.0));
+			entries.push_back(T(3, 3, 9.0));
+			entries.push_back(T(3, 4, 8.0));
+			entries.push_back(T(3, 5, 7.0));
+			entries.push_back(T(3, 6, 1.0));
+			entries.push_back(T(4, 1, 1.0));
+			entries.push_back(T(4, 3, 6.0));
+			entries.push_back(T(4, 5, 4.0));
+			entries.push_back(T(4, 7, 1.0));
+			entries.push_back(T(5, 2, 1.0));
+			entries.push_back(T(5, 3, 3.0));
+			entries.push_back(T(5, 4, 2.0));
+			entries.push_back(T(5, 5, 1.0));
+			entries.push_back(T(5, 8, 1.0));
+			entries.push_back(T(6, 6, 1.0));
+			entries.push_back(T(6, 7, 2.0));
+			entries.push_back(T(6, 8, 3.0));
+			entries.push_back(T(6, 3, 1.0));
+			entries.push_back(T(7, 6, 4.0));
+			entries.push_back(T(7, 8, 6.0));
+			entries.push_back(T(7, 4, 1.0));
+			entries.push_back(T(8, 6, 7.0));
+			entries.push_back(T(8, 7, 8.0));
+			entries.push_back(T(8, 8, 9.0));
+			entries.push_back(T(8, 5, 1.0));
+			test.setFromTriplets(entries.begin(), entries.end());
+
+			state_type vec2 = { 3.0, 6.0, 3.0, 2.0, 7.0, 2.0, 9.0, 1.0, 9.0 };
+
 			QuantumMasterEquation eq(Leff_data, Leff_data.rows());
+			//QuantumMasterEquation eq(test, test.rows());
+			setup.num_radicals = 2;
 			double y = eq.SparseSolverThomas(vec, singlet_projection_operator, setup);
 		}
 		else if (model_mode == mode::LaplacianIterative)
 		{
 			//QuantumMasterEquation eq(Leff_data, Leff_data.rows());
-			QuantumMasterEquation eq(Leff_data.rows());
-			Matrix inverse = BlockInverse(SecondaryMat, setup.num_radicals, std::pow(radical_sys.get_dims(true)[0], 2));
-			Matrix c = -1 * Leff_data;
-			double y = eq.SparseSolverIterative(vec, singlet_projection_operator, { inverse, c}, setup);
+			//QuantumMasterEquation eq(Leff_data.rows());
+			//Matrix inverse = BlockInverse(SecondaryMat, setup.num_radicals, std::pow(radical_sys.get_dims(true)[0], 2));
+			//Matrix c = -1 * Leff_data;
+			//double y = eq.SparseSolverIterative(vec, singlet_projection_operator, { inverse, c}, setup);
 
 			//Matrix test(9, 9);
 			//typedef Eigen::Triplet<std::complex<double>, int32_t> T;
