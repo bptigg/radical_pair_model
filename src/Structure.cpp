@@ -188,6 +188,7 @@ void Structure::CreateRadicalSystem()
         }
 
         hyp.push_back({ MakeHamiltonian(m_dims, binding.first, binding.second, hyperfine), rp });
+        std::cout << Eigen::MatrixXcd(hyp[0].first) << std::endl;
     }
 
 

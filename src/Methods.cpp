@@ -612,7 +612,7 @@ Matrix GetInverse(const Matrix* mat, bool diagonal)
 	auto ide = identity_col(rows);
 	work_col.clear();
 
-	auto SolveCol = [mat](int i)
+	auto SolveCol = [mat](int i) //update this code to use the LU decompastition rather than the doing the decomposition each time
 		{
 			Eigen::SparseLU<Matrix> solver;
 			solver.compute(*mat);

@@ -562,19 +562,22 @@ int main()
 	Structure_param two_radical;
 	//two_radical.spins = {1, 1, 1};
 	two_radical.spins = { 0.5, 0.5, 0.5 };
+	two_radical.spins = { 0.5 };
 	two_radical.num_radicals = 2;
 	two_radical.DipoleBinding = { {"EED_Wc", 0}, {"EED_Wd", 1} };
-	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0}, {"N5_Wd", {0,2}, 1}, {"N1_Wc", {1,4}, 1} };
+	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0}, {"N5_Wd", {0,2}, 1}, {"N1_Wd", {1,4}, 1} };
+	two_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0} , {"N5_Wd", {0,2}, 1} };
 
 	Structure_param one_radical;
-	one_radical.spins = { 1, 1 };
+	one_radical.spins = { 0.5, 1 };
 	//one_radical.spins = { 1 };
 	one_radical.num_radicals = 1;
 	one_radical.DipoleBinding = { {"EED_Wc", 0} };
 	one_radical.HyperfineBinding = { {"N5_Wc", {0,2}, 0}, {"N1_Wc", {1,3}, 0} };
 	//one_radical.HyperfineBinding = { {"A", {0,2}, 0} };
 
-	mode model_mode = mode::LaplacianThomas;
+	//mode model_mode = mode::LaplacianThomas;
+	mode model_mode = mode::DirectTimeIntegration;
 	system_setup setup;
 	setup.mode = (int)model_mode;
 	setup.rate_constants = { KF_C, KF_D };
@@ -603,6 +606,7 @@ int main()
 
 	auto dims = radical_sys.get_dims();
 	Matrix singlet_projection_operator = 0.25 * MakeSpinOperator(dims, {}) - MakeHamiltonian(dims, 0, 1, ide);
+	std::cout << Eigen::MatrixXcd(singlet_projection_operator) << std::endl;
 	Matrix identity_mat = MakeSpinOperator(dims, {});
 	Matrix triplet_projection_operator = identity_mat - singlet_projection_operator;
 
@@ -610,6 +614,7 @@ int main()
 
 	{
 		Matrix rho_0 = singlet_projection_operator / singlet_projection_operator.diagonal().sum();
+		std::cout << Eigen::MatrixXcd(rho_0) << std::endl;
 		auto vec_0 = FlattenMatrixVec(rho_0);
 		vec.insert(vec.end(), std::make_move_iterator(vec_0.begin()), std::make_move_iterator(vec_0.end()));
 		for (int i = 1; i < radical_sys.get_num_radicals(); i++)
